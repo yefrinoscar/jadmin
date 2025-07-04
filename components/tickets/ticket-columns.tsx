@@ -1,9 +1,8 @@
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Copy } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Copy, Building2 } from "lucide-react"
 
 import { cn, parseServiceTags, cleanUserName } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { StatusTag, PriorityTag } from "@/components/ui/status-tags"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -17,13 +16,15 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Ticket } from "@/lib/types/ticket"
 import { User } from "@/lib/schemas"
 import { AssignUserPopover } from "./assign-user-popover"
+import { InteractiveStatusSelector } from "./interactive-status-selector"
+import { InteractivePrioritySelector } from "./interactive-priority-selector"
 import { TICKET_STATUS_LABELS, TICKET_PRIORITY_LABELS } from "@/lib/schemas"
 
 export const ticketColumns: ColumnDef<Ticket>[] = [
   {
     id: "select",
     header: ({ table }) => (
-      <div className="w-[50px] flex justify-center sticky left-0 z-10 border-r">
+      <div className="w-[50px] flex justify-center">
         <Checkbox
           checked={
             table.getIsAllPageRowsSelected() ||
@@ -35,7 +36,7 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
       </div>
     ),
     cell: ({ row }) => (
-      <div className="w-[50px] flex justify-center sticky left-0 z-10 border-r">
+      <div className="w-[50px] flex justify-center">
         <Checkbox
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
@@ -46,11 +47,12 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
     ),
     enableSorting: false,
     enableHiding: false,
+    size: 50,
   },
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <div className="sticky left-[50px] z-10 border-r">  
+      <div className="w-[110px]">  
         <span className="font-medium">Ticket ID</span>
       </div>
     ),
@@ -68,7 +70,7 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
       }
       
       return (
-        <div className="group flex items-center gap-2 w-[110px] sticky left-[50px] z-10 border-r" title={fullId}>
+        <div className="group flex items-center gap-2 w-[110px]" title={fullId}>
           <span className="font-medium text-xs uppercase tracking-wide truncate">
             {fullId}
           </span>
@@ -84,13 +86,14 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
         </div>
       )
     },
+    size: 110,
   },
   {
-    accessorKey: "service_tag_id",
+    id: "service_tags",
     header: "Etiquetas de Servicio",
     cell: ({ row }) => {
-      const serviceTagsRaw = row.getValue("service_tag_id") as string
-      const serviceTags = parseServiceTags(serviceTagsRaw)
+      const ticket = row.original
+      const serviceTags = ticket.service_tags || []
       
       if (serviceTags.length === 0) {
         return (
@@ -102,14 +105,14 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
       
       return (
         <div className="flex flex-wrap gap-1 w-[160px] overflow-hidden">
-          {serviceTags.slice(0, 2).map((tag, index) => (
+          {serviceTags.slice(0, 2).map((serviceTag) => (
             <Badge 
-              key={index} 
+              key={serviceTag.id} 
               variant="secondary" 
               className="text-xs font-mono px-2 py-1 truncate max-w-[70px]"
-              title={tag}
+              title={`${serviceTag.tag} - ${serviceTag.description}`}
             >
-              {tag}
+              {serviceTag.tag}
             </Badge>
           ))}
           {serviceTags.length > 2 && (
@@ -121,11 +124,40 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
       )
     },
     filterFn: (row, id, value) => {
-      const serviceTagsRaw = row.getValue(id) as string
-      const serviceTags = parseServiceTags(serviceTagsRaw)
-      return serviceTags.some(tag => 
-        tag.toLowerCase().includes(value.toLowerCase())
+      const ticket = row.original
+      const serviceTags = ticket.service_tags || []
+      return serviceTags.some(serviceTag => 
+        serviceTag.tag.toLowerCase().includes(value.toLowerCase()) ||
+        serviceTag.description.toLowerCase().includes(value.toLowerCase())
       )
+    },
+  },
+  {
+    accessorKey: "client_company_name",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-8 px-2 lg:px-3"
+        >
+          Empresa
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const companyName = row.getValue("client_company_name") as string
+      return (
+        <div className="w-[140px] flex items-center gap-2" title={companyName}>
+          <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className="truncate text-sm">{companyName || "Sin empresa"}</span>
+        </div>
+      )
+    },
+    filterFn: (row, id, value) => {
+      const companyName = row.getValue("client_company_name") as string
+      return companyName?.toLowerCase().includes(value.toLowerCase()) || false
     },
   },
   {
@@ -173,13 +205,13 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
     header: "Estado",
     cell: ({ row }) => {
       const status = row.getValue("status") as keyof typeof TICKET_STATUS_LABELS
+      const ticket = row.original
       
       return (
-        <div className="w-[140px]">
-          <StatusTag 
-            status={status}
-            size="sm"
-            showTooltip={true}
+        <div className="w-[140px]" onClick={(e) => e.stopPropagation()}>
+          <InteractiveStatusSelector 
+            ticketId={ticket.id}
+            currentStatus={status}
           />
         </div>
       )
@@ -193,13 +225,13 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
     header: "Prioridad",
     cell: ({ row }) => {
       const priority = row.getValue("priority") as keyof typeof TICKET_PRIORITY_LABELS
+      const ticket = row.original
       
       return (
-        <div className="w-[120px]">
-          <PriorityTag 
-            priority={priority}
-            size="sm"
-            showTooltip={true}
+        <div className="w-[120px]" onClick={(e) => e.stopPropagation()}>
+          <InteractivePrioritySelector 
+            ticketId={ticket.id}
+            currentPriority={priority}
           />
         </div>
       )

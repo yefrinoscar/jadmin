@@ -14,7 +14,8 @@ import {
   getFacetedRowModel,
   getFacetedUniqueValues,
 } from "@tanstack/react-table"
-import { Plus, X } from "lucide-react"
+import { Plus, X, User as UserIcon } from "lucide-react"
+import { format } from "date-fns"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,29 +38,52 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter"
-import { ticketColumns } from "./ticket-columns"
-import { TicketDrawer } from "./ticket-drawer"
-import { Ticket, ServiceTag, ticketStatuses, ticketPriorities, ticketSources } from "@/lib/types/ticket"
-import { format } from "date-fns"
+import { userColumns, UserWithCount } from "./user-columns"
+import { CreateUserDialog } from "./create-user-dialog"
 
-interface TicketsTableProps {
-  data: Ticket[]
+const userRoles = [
+  {
+    value: "admin",
+    label: "Administrador",
+  },
+  {
+    value: "technician", 
+    label: "Técnico",
+  },
+  {
+    value: "manager",
+    label: "Gerente",
+  },
+  {
+    value: "viewer",
+    label: "Visualizador",
+  },
+  {
+    value: "client",
+    label: "Cliente",
+  },
+]
+
+interface UsersTableProps {
+  data: UserWithCount[]
+  onUserCreated?: () => void
 }
 
-export function TicketsTable({ data }: TicketsTableProps) {
+export function UsersTable({ data, onUserCreated }: UsersTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
-  const [selectedTicket, setSelectedTicket] = React.useState<Ticket | null>(null)
+  const [selectedUser, setSelectedUser] = React.useState<UserWithCount | null>(null)
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = React.useState(false)
   const [showPinnedShadow, setShowPinnedShadow] = React.useState(false)
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
 
   const table = useReactTable({
     data,
-    columns: ticketColumns,
+    columns: userColumns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
@@ -107,14 +131,14 @@ export function TicketsTable({ data }: TicketsTableProps) {
     }
   }, [handleScroll, data])
 
-  const handleRowClick = (ticket: Ticket, event: React.MouseEvent) => {
+  const handleRowClick = (user: UserWithCount, event: React.MouseEvent) => {
     // Don't open drawer if clicking on checkbox, buttons, or other interactive elements
     const target = event.target as HTMLElement
     if (target.closest('button, input, [role="button"]')) {
       return
     }
     
-    setSelectedTicket(ticket)
+    setSelectedUser(user)
     setIsDetailDrawerOpen(true)
   }
 
@@ -123,34 +147,27 @@ export function TicketsTable({ data }: TicketsTableProps) {
       <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
         <div className="flex flex-1 flex-col space-y-2 md:flex-row md:items-center md:space-y-0 md:space-x-2">
           <Input
-            placeholder="Buscar descripciones..."
-            value={(table.getColumn("title")?.getFilterValue() as string) ?? ""}
+            placeholder="Buscar usuarios..."
+            value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
             onChange={(event) =>
-              table.getColumn("title")?.setFilterValue(event.target.value)
+              table.getColumn("name")?.setFilterValue(event.target.value)
             }
             className="h-8 w-full md:w-[150px] lg:w-[250px]"
           />
           <div className="flex space-x-2">
             <Input
-              placeholder="Filtrar etiquetas..."
-              value={(table.getColumn("service_tags")?.getFilterValue() as string) ?? ""}
+              placeholder="Filtrar emails..."
+              value={(table.getColumn("email")?.getFilterValue() as string) ?? ""}
               onChange={(event) =>
-                table.getColumn("service_tags")?.setFilterValue(event.target.value)
+                table.getColumn("email")?.setFilterValue(event.target.value)
               }
               className="h-8 w-full md:w-[120px] lg:w-[150px]"
             />
-            {table.getColumn("status") && (
+            {table.getColumn("role") && (
               <DataTableFacetedFilter
-                column={table.getColumn("status")}
-                title="Estado"
-                options={ticketStatuses}
-              />
-            )}
-            {table.getColumn("priority") && (
-              <DataTableFacetedFilter
-                column={table.getColumn("priority")}
-                title="Prioridad"
-                options={ticketPriorities}
+                column={table.getColumn("role")}
+                title="Rol"
+                options={userRoles}
               />
             )}
             {isFiltered && (
@@ -169,11 +186,11 @@ export function TicketsTable({ data }: TicketsTableProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="ml-auto h-8 hidden md:flex">
-                View
+                Columnas
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[150px]">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+              <DropdownMenuLabel>Alternar columnas</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {table
                 .getAllColumns()
@@ -197,12 +214,15 @@ export function TicketsTable({ data }: TicketsTableProps) {
                 })}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" className="h-8">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Task
-          </Button>
+          <CreateUserDialog onUserCreated={onUserCreated}>
+            <Button size="sm" className="h-8">
+              <Plus className="mr-2 h-4 w-4" />
+              Agregar Usuario
+            </Button>
+          </CreateUserDialog>
         </div>
       </div>
+
       {/* Desktop Table with Pinned Columns */}
       <div className="hidden md:block">
         <div className="w-full rounded-lg border bg-background overflow-hidden relative">
@@ -219,7 +239,7 @@ export function TicketsTable({ data }: TicketsTableProps) {
                 {table.getHeaderGroups().map((headerGroup: any) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header: any, index: number) => {
-                      const isPinnedColumn = index === 0 || index === 1; // checkbox and ID
+                      const isPinnedColumn = index === 0 || index === 1; // checkbox and name
                       return (
                         <TableHead 
                           key={header.id} 
@@ -253,7 +273,7 @@ export function TicketsTable({ data }: TicketsTableProps) {
                       onClick={(event) => handleRowClick(row.original, event)}
                     >
                       {row.getVisibleCells().map((cell: any, index: number) => {
-                        const isPinnedColumn = index === 0 || index === 1; // checkbox and ID
+                        const isPinnedColumn = index === 0 || index === 1; // checkbox and name
                         return (
                           <TableCell 
                             key={cell.id} 
@@ -277,10 +297,10 @@ export function TicketsTable({ data }: TicketsTableProps) {
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={ticketColumns.length}
+                      colSpan={userColumns.length}
                       className="h-16 text-center text-sm"
                     >
-                      No results.
+                      No se encontraron usuarios.
                     </TableCell>
                   </TableRow>
                 )}
@@ -294,68 +314,54 @@ export function TicketsTable({ data }: TicketsTableProps) {
       <div className="md:hidden space-y-4">
         {table.getRowModel().rows?.length ? (
           table.getRowModel().rows.map((row: any) => {
-            const ticket = row.original;
+            const user = row.original;
+            const initials = user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+            
             return (
               <Card 
                 key={row.id} 
                 className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={(event) => handleRowClick(ticket, event)}
+                onClick={(event) => handleRowClick(user, event)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="font-medium text-sm leading-tight">{ticket.title}</h3>
-                      <p className="text-xs text-muted-foreground mt-1">#{ticket.id}</p>
+                    <div className="flex items-center gap-3 flex-1">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback className="text-xs">
+                          {initials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-medium text-sm leading-tight">{user.name}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{user.email}</p>
+                      </div>
                     </div>
-                    <Badge 
-                      variant={ticket.priority === 'high' ? 'destructive' : 
-                              ticket.priority === 'medium' ? 'default' : 'secondary'}
-                      className="text-xs"
-                    >
-                      {ticket.priority}
+                    <Badge className="text-xs">
+                      {user.role}
                     </Badge>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-muted-foreground">Estado:</span>
-                      <div className="mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {ticket.status}
-                        </Badge>
-                      </div>
+                      <span className="text-muted-foreground">Tickets:</span>
+                      <p className="mt-1 font-medium">{user.assigned_tickets_count || 0} asignados</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Asignado:</span>
-                      <p className="mt-1 font-medium">{ticket.assigned_to || 'Sin asignar'}</p>
+                      <span className="text-muted-foreground">Se unió:</span>
+                      <p className="mt-1 font-medium">
+                        {format(new Date(user.created_at), "MMM dd, yyyy")}
+                      </p>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">Fuente:</span>
-                      <p className="mt-1 font-medium">{ticket.source}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Etiquetas:</span>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {ticket.service_tags && ticket.service_tags.length > 0 ? (
-                          ticket.service_tags.slice(0, 2).map((serviceTag: ServiceTag) => (
-                            <Badge key={serviceTag.id} variant="outline" className="text-xs">
-                              {serviceTag.tag}
-                            </Badge>
-                          ))
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Última actividad:</span>
+                      <p className="mt-1 font-medium">
+                        {user.last_sign_in_at ? (
+                          format(new Date(user.last_sign_in_at), "MMM dd, HH:mm")
                         ) : (
-                          <span className="text-xs text-muted-foreground italic">Sin etiquetas</span>
+                          <span className="italic">Nunca</span>
                         )}
-                        {ticket.service_tags && ticket.service_tags.length > 2 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{ticket.service_tags.length - 2}
-                          </Badge>
-                        )}
-                      </div>
+                      </p>
                     </div>
-                  </div>
-                  
-                  <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-                    Creado: {format(new Date(ticket.created_at), "MMM dd, yyyy")}
                   </div>
                 </CardContent>
               </Card>
@@ -364,7 +370,11 @@ export function TicketsTable({ data }: TicketsTableProps) {
         ) : (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-sm text-muted-foreground">No se encontraron tickets</p>
+              <UserIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground mb-2">No se encontraron usuarios</p>
+              <p className="text-xs text-muted-foreground">
+                Comienza agregando miembros del equipo
+              </p>
             </CardContent>
           </Card>
         )}
@@ -372,12 +382,12 @@ export function TicketsTable({ data }: TicketsTableProps) {
       
       <div className="flex flex-col space-y-4 px-2 md:flex-row md:items-center md:justify-between md:space-y-0">
         <div className="flex-1 text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected.
+          {table.getFilteredSelectedRowModel().rows.length} de{" "}
+          {table.getFilteredRowModel().rows.length} fila(s) seleccionadas.
         </div>
         <div className="flex flex-col space-y-4 md:flex-row md:items-center md:space-y-0 md:space-x-6 lg:space-x-8">
           <div className="flex items-center space-x-2">
-            <p className="text-sm font-medium">Rows per page</p>
+            <p className="text-sm font-medium">Filas por página</p>
             <select
               value={table.getState().pagination.pageSize}
               onChange={(e) => {
@@ -393,56 +403,29 @@ export function TicketsTable({ data }: TicketsTableProps) {
             </select>
           </div>
           <div className="flex w-[100px] items-center justify-center text-sm font-medium">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            Página {table.getState().pagination.pageIndex + 1} de{" "}
             {table.getPageCount()}
           </div>
           <div className="flex items-center space-x-2">
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
-              onClick={() => table.setPageIndex(0)}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <span className="sr-only">Go to first page</span>
-              ⟨⟨
-            </Button>
-            <Button
-              variant="outline"
-              className="h-8 w-8 p-0"
+              size="sm"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
-              <span className="sr-only">Go to previous page</span>
-              ⟨
+              Anterior
             </Button>
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
+              size="sm"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              <span className="sr-only">Go to next page</span>
-              ⟩
-            </Button>
-            <Button
-              variant="outline"
-              className="h-8 w-8 p-0"
-              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-              disabled={!table.getCanNextPage()}
-            >
-              <span className="sr-only">Go to last page</span>
-              ⟩⟩
+              Siguiente
             </Button>
           </div>
         </div>
       </div>
-
-      {/* Ticket Detail Drawer */}
-      <TicketDrawer
-        ticket={selectedTicket}
-        open={isDetailDrawerOpen}
-        onOpenChange={setIsDetailDrawerOpen}
-      />
     </div>
   )
 } 

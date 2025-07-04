@@ -52,7 +52,7 @@ export const TicketSchema = z.object({
   priority: TicketPrioritySchema,
   reported_by: z.string().uuid(),
   assigned_to: z.string().uuid().nullable(),
-  service_tag_id: z.string().regex(/^ST-\d{6}$/, 'Invalid service tag ID format'),
+  client_id: z.string().uuid(),
   source: TicketSourceSchema,
   photo_url: z.string().url().nullable(),
   time_open: z.string().datetime().nullable(),
@@ -101,7 +101,8 @@ export const CreateTicketInputSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().min(1, 'Description is required'),
   priority: TicketPrioritySchema,
-  service_tag_id: z.string().regex(/^ST-\d{6}$/, 'Invalid service tag ID format').or(z.string().uuid('Invalid service tag ID')),
+  client_id: z.string().uuid('Invalid client ID'),
+  service_tag_ids: z.array(z.string().regex(/^ST-\d{6}$/, 'Invalid service tag ID format').or(z.string().uuid('Invalid service tag ID'))).min(1, 'At least one service tag is required'),
   source: TicketSourceSchema,
   photo_url: z.string().url('Please enter a valid URL').optional(),
 });
@@ -109,6 +110,20 @@ export const CreateTicketInputSchema = z.object({
 export const CreateTicketUpdateInputSchema = z.object({
   ticket_id: z.string().regex(/^TK-\d{6}$/, 'Invalid ticket ID format').or(z.string().uuid('Invalid ticket ID')),
   message: z.string().min(1, 'Message is required'),
+});
+
+// Public ticket submission schema (for external API)
+export const CreatePublicTicketInputSchema = z.object({
+  title: z.string().min(1, 'Title is required').max(255, 'Title is too long'),
+  description: z.string().min(1, 'Description is required').max(2000, 'Description is too long'),
+  priority: TicketPrioritySchema.default('medium'),
+  company_name: z.string().min(1, 'Company name is required').max(255, 'Company name is too long'),
+  service_tag_names: z.array(z.string().min(1, 'Service tag cannot be empty').max(50, 'Service tag is too long')).min(1, 'At least one service tag is required'),
+  contact_name: z.string().min(1, 'Contact name is required').max(100, 'Contact name is too long'),
+  contact_email: z.string().email('Please enter a valid email address'),
+  contact_phone: z.string().min(1, 'Phone number is required').max(20, 'Phone number is too long'),
+  source: TicketSourceSchema.default('web'),
+  photo_url: z.string().url('Please enter a valid URL').optional(),
 });
 
 // =============================================================================
@@ -147,7 +162,7 @@ export const UpdateTicketInputSchema = z.object({
   status: TicketStatusSchema.optional(),
   priority: TicketPrioritySchema.optional(),
   assigned_to: z.string().uuid('Invalid user ID').nullable().optional(),
-  service_tag_id: z.string().regex(/^ST-\d{6}$/, 'Invalid service tag ID format').or(z.string().uuid('Invalid service tag ID')).optional(),
+  client_id: z.string().uuid('Invalid client ID').optional(),
   source: TicketSourceSchema.optional(),
   photo_url: z.string().url('Please enter a valid URL').nullable().optional(),
 });
@@ -189,7 +204,8 @@ export const ServiceTagWithClientSchema = ServiceTagSchema.extend({
 
 // Ticket with all related data
 export const TicketWithRelationsSchema = TicketSchema.extend({
-  service_tags: ServiceTagWithClientSchema,
+  client_company_name: z.string(),
+  service_tags: z.array(ServiceTagWithClientSchema),
   reported_user: UserInfoSchema,
   assigned_user: UserInfoSchema.nullable(),
   approved_user: UserInfoSchema.nullable(),
@@ -243,6 +259,7 @@ export type CreateClientInput = z.infer<typeof CreateClientInputSchema>;
 export type CreateServiceTagInput = z.infer<typeof CreateServiceTagInputSchema>;
 export type CreateTicketInput = z.infer<typeof CreateTicketInputSchema>;
 export type CreateTicketUpdateInput = z.infer<typeof CreateTicketUpdateInputSchema>;
+export type CreatePublicTicketInput = z.infer<typeof CreatePublicTicketInputSchema>;
 
 export type UpdateUserInput = z.infer<typeof UpdateUserInputSchema>;
 export type UpdateClientInput = z.infer<typeof UpdateClientInputSchema>;
@@ -288,6 +305,15 @@ export type AssignUserInput = z.infer<typeof AssignUserInputSchema>;
 // Display mappings for Spanish UI (code stays in English, UI shows Spanish)
 export const TICKET_STATUS_LABELS = {
   pending_approval: 'Pendiente de Aprobación',
+  open: 'Abierto',
+  in_progress: 'En Progreso',
+  resolved: 'Resuelto',
+  closed: 'Cerrado',
+} as const;
+
+// Table display labels (shorter versions for table view)
+export const TICKET_STATUS_TABLE_LABELS = {
+  pending_approval: 'Pendiente',
   open: 'Abierto',
   in_progress: 'En Progreso',
   resolved: 'Resuelto',

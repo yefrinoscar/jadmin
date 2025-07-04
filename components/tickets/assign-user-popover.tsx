@@ -130,7 +130,10 @@ export function AssignUserPopover({
                   {getCurrentUserDisplay()}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80" align="start">
+              <PopoverContent 
+                className="w-80 backdrop-blur-xl bg-background/60" 
+                align="start"
+              >
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 pb-2 border-b">
                     <User className="h-4 w-4" />

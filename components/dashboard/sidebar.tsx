@@ -6,7 +6,6 @@ import {
   Home, 
   TicketIcon, 
   Building2, 
-  Tag, 
   Users,
   Settings,
   LogOut 
@@ -19,7 +18,6 @@ const navigation = [
   { name: "Panel de Control", href: "/dashboard", icon: Home },
   { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon },
   { name: "Clientes", href: "/dashboard/clients", icon: Building2 },
-  { name: "Etiquetas de Servicio", href: "/dashboard/service-tags", icon: Tag },
   { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true },
 ];
 

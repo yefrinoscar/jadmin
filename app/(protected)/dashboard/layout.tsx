@@ -13,13 +13,11 @@ export default function DashboardLayout({
       <aside className="hidden md:block w-64 border-r bg-background">
         <Sidebar />
       </aside>
-      
+
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <main className="flex-1 overflow-auto p-4 md:p-6">
-          {children}
-        </main>
-      </div>
+      <main className="flex-1 overflow-auto p-4 md:p-6">
+        {children}
+      </main>
     </div>
   );
 } 
