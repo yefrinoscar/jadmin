@@ -244,6 +244,97 @@ export const appRouter = createTRPCRouter({
       }),
   }),
 
+  // Service Tags routes
+  serviceTags: createTRPCRouter({
+    getAll: protectedProcedure.query(async ({ ctx }) => {
+      const { data, error } = await ctx.supabase
+        .from('service_tags')
+        .select(`
+          *,
+          clients (
+            id,
+            company_name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    }),
+
+    getById: protectedProcedure
+      .input(IdParamSchema)
+      .query(async ({ ctx, input }) => {
+        const { data, error } = await ctx.supabase
+          .from('service_tags')
+          .select(`
+            *,
+            clients (
+              id,
+              company_name
+            )
+          `)
+          .eq('id', input.id)
+          .single();
+
+        if (error) throw error;
+        return data;
+      }),
+
+    getByClientId: protectedProcedure
+      .input(ClientIdParamSchema)
+      .query(async ({ ctx, input }) => {
+        const { data, error } = await ctx.supabase
+          .from('service_tags')
+          .select('*')
+          .eq('client_id', input.clientId)
+          .order('tag', { ascending: true });
+
+        if (error) throw error;
+        return data;
+      }),
+
+    create: protectedProcedure
+      .input(CreateServiceTagInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        const { data, error } = await ctx.supabase
+          .from('service_tags')
+          .insert([input])
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      }),
+
+    update: protectedProcedure
+      .input(UpdateServiceTagInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...updateData } = input;
+        const { data, error } = await ctx.supabase
+          .from('service_tags')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      }),
+
+    delete: protectedProcedure
+      .input(IdParamSchema)
+      .mutation(async ({ ctx, input }) => {
+        const { error } = await ctx.supabase
+          .from('service_tags')
+          .delete()
+          .eq('id', input.id);
+
+        if (error) throw error;
+        return SuccessResponseSchema.parse({ success: true });
+      }),
+  }),
+
   // Ticket routes
   tickets: createTRPCRouter({
     // Simple test query without joins
