@@ -1,40 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { CreatePublicTicketInputSchema } from '../../../lib/schemas';
-import type { Database } from '../../../lib/database.types';
+import { Database } from '@/lib/database.types';
+import { CreatePublicTicketSchema, TicketResponseSchema } from '@/lib/types/ticket';
 
-// CORS headers for external website access
+// Headers CORS
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // In production, specify allowed domains
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Max-Age': '86400',
 };
 
-// Handle preflight requests
+// Manejar preflight requests
 export async function OPTIONS() {
-  return new Response(null, {
-    status: 200,
-    headers: corsHeaders,
-  });
+  return NextResponse.json({}, { headers: corsHeaders });
 }
 
-// Create public ticket endpoint
+// Función para convertir base64 a File
+async function base64ToFile(base64Data: string, filename: string): Promise<File> {
+  // Remove the data URL prefix and get just the base64 data
+  const base64WithoutPrefix = base64Data.replace(/^data:image\/\w+;base64,/, '');
+  
+  // Convert base64 to binary
+  const binaryStr = atob(base64WithoutPrefix);
+  const len = binaryStr.length;
+  const arr = new Uint8Array(len);
+  
+  for (let i = 0; i < len; i++) {
+    arr[i] = binaryStr.charCodeAt(i);
+  }
+  
+  // Get mime type from data URL
+  const mimeType = base64Data.match(/^data:([^;]+);/)?.[1] || 'image/png';
+  
+  // Create Blob and File
+  const blob = new Blob([arr], { type: mimeType });
+  return new File([blob], filename, { type: mimeType });
+}
+
+// Endpoint para crear tickets públicos
 export async function POST(request: NextRequest) {
   try {
-    // Parse request body
-    const body = await request.json();
-    
-    // Validate input using existing schema
-    const validationResult = CreatePublicTicketInputSchema.safeParse(body);
+    // Verificar Content-Type
+    const contentType = request.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Content-Type no válido',
+          message: 'El Content-Type debe ser "application/json".'
+        },
+        { 
+          status: 400,
+          headers: corsHeaders 
+        }
+      );
+    }
+
+    // Crear cliente de Supabase (anónimo - no requiere auth)
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get() { return undefined },
+          set() {},
+          remove() {},
+        },
+      }
+    );
+
+    // Parse JSON data
+    const jsonData = await request.json();
+    const ticketData = {
+      ...jsonData,
+      priority: jsonData.priority || 'medium',
+      source: jsonData.source || 'web'
+    };
+
+    // Validar input usando el schema
+    const validationResult = CreatePublicTicketSchema.safeParse(ticketData);
     
     if (!validationResult.success) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Validation failed',
+          error: 'Error de validación',
           details: validationResult.error.errors,
-          message: 'Please check the submitted data and try again.'
+          message: 'Por favor revisa los datos enviados.'
         },
         { 
           status: 400,
@@ -44,24 +97,82 @@ export async function POST(request: NextRequest) {
     }
 
     const input = validationResult.data;
+    const photoUrls: string[] = [];
 
-    // Create Supabase client (anonymous - no auth required)
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return [];
-          },
-          setAll() {
-            // No cookies for anonymous requests
-          },
-        },
+    // Convert and upload base64 images if present
+    if (jsonData.images?.length > 0) {
+      for (const img of jsonData.images) {
+        try {
+          const photo = await base64ToFile(img.data, img.filename);
+
+          // Validate file type
+          if (!photo.type.startsWith('image/')) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'Tipo de archivo inválido',
+                message: 'Por favor sube solo imágenes.'
+              },
+              { 
+                status: 400,
+                headers: corsHeaders 
+              }
+            );
+          }
+
+          // Generate unique filename
+          const timestamp = Date.now();
+          const extension = photo.name.split('.').pop();
+          const filename = `tickets/${timestamp}-${Math.random().toString(36).substring(2)}.${extension}`;
+
+          // Upload to Supabase Storage
+          const { data: uploadData, error: uploadError } = await supabase
+            .storage
+            .from('images')
+            .upload(filename, photo);
+
+          if (uploadError) {
+            console.error('Error al subir imagen:', uploadError);
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'Error al subir imagen',
+                message: 'No se pudo subir la imagen. Por favor intenta de nuevo.',
+                details: process.env.NODE_ENV === 'development' ? uploadError.message : undefined
+              },
+              { 
+                status: 500,
+                headers: corsHeaders 
+              }
+            );
+          }
+
+          // Get public URL
+          const { data: { publicUrl } } = supabase
+            .storage
+            .from('images')
+            .getPublicUrl(filename);
+
+          photoUrls.push(publicUrl);
+        } catch (error) {
+          console.error('Error procesando imagen base64:', error);
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Error procesando imagen',
+              message: 'Error al procesar la imagen base64. Verifica el formato.',
+              details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
+            },
+            { 
+              status: 400,
+              headers: corsHeaders 
+            }
+          );
+        }
       }
-    );
+    }
 
-    // Call the database function to create public ticket
+    // Llamar a la función de base de datos para crear el ticket
     const { data, error } = await supabase.rpc('create_public_ticket', {
       p_title: input.title,
       p_description: input.description,
@@ -72,16 +183,16 @@ export async function POST(request: NextRequest) {
       p_contact_phone: input.contact_phone,
       p_priority: input.priority,
       p_source: input.source,
-      p_photo_url: input.photo_url || null,
+      p_photo_url: photoUrls.length > 0 ? photoUrls : null,
     });
 
     if (error) {
-      console.error('Database error:', error);
+      console.error('Error de base de datos:', error);
       return NextResponse.json(
         {
           success: false,
-          error: 'Database error',
-          message: 'Failed to create ticket. Please try again later.',
+          error: 'Error de base de datos',
+          message: 'Error al crear el ticket. Por favor intenta de nuevo.',
           details: process.env.NODE_ENV === 'development' ? error.message : undefined
         },
         { 
@@ -91,33 +202,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if the function returned an error
-    if (data && !data.success) {
+    // Validar la respuesta
+    const responseValidation = TicketResponseSchema.safeParse(data);
+    if (!responseValidation.success) {
+      console.error('Error de validación de respuesta:', responseValidation.error);
       return NextResponse.json(
         {
           success: false,
-          error: data.error || 'Unknown error',
-          message: data.message || 'Failed to create ticket'
+          error: 'Formato de respuesta inválido',
+          message: 'El servidor retornó un formato de respuesta inválido.',
+          details: process.env.NODE_ENV === 'development' ? responseValidation.error.errors : undefined
         },
         { 
-          status: 400,
+          status: 500,
           headers: corsHeaders 
         }
       );
     }
 
-    // Success response
+    // Respuesta exitosa
     return NextResponse.json(
-      {
-        success: true,
-        data: {
-          ticket_id: data.ticket_id,
-          company_name: data.company_name,
-          client_was_new: data.client_was_new,
-          service_tags: data.service_tags,
-          message: data.message || 'Ticket created successfully and is pending admin approval'
-        }
-      },
+      responseValidation.data,
       { 
         status: 201,
         headers: corsHeaders 
@@ -125,13 +230,13 @@ export async function POST(request: NextRequest) {
     );
 
   } catch (error) {
-    console.error('Unexpected error:', error);
+    console.error('Error inesperado:', error);
     
     return NextResponse.json(
       {
         success: false,
-        error: 'Internal server error',
-        message: 'An unexpected error occurred. Please try again later.',
+        error: 'Error interno del servidor',
+        message: 'Ocurrió un error inesperado. Por favor intenta de nuevo.',
         details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
       },
       { 
@@ -153,20 +258,22 @@ export async function GET() {
         method: 'POST',
         endpoint: '/api/public-tickets',
         content_type: 'application/json',
-        required_fields: [
-          'title',
-          'description', 
-          'company_name',
-          'service_tag_names',
-          'contact_name',
-          'contact_email',
-          'contact_phone'
-        ],
-        optional_fields: [
-          'priority',
-          'source',
-          'photo_url'
-        ]
+        body_format: {
+          required_fields: {
+            title: 'string',
+            description: 'string',
+            company_name: 'string',
+            service_tag_names: 'string[]',
+            contact_name: 'string',
+            contact_email: 'string',
+            contact_phone: 'string'
+          },
+          optional_fields: {
+            priority: '"low" | "medium" | "high"',
+            source: '"web" | "email" | "phone" | "in_person"',
+            images: 'Array<{ filename: string, data: string }>' // base64 images
+          }
+        }
       }
     },
     { 

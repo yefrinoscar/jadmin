@@ -211,6 +211,10 @@ export type Database = {
           assigned_to: string | null;
           client_id: string;
           client_company_name: string;
+          reported_user_name: string;
+          reported_user_email: string;
+          assigned_user_name: string | null;
+          assigned_user_email: string | null;
           source: 'email' | 'phone' | 'web' | 'in_person';
           photo_url: string | null;
           time_open: string | null;
