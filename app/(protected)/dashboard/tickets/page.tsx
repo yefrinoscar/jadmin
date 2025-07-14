@@ -6,6 +6,11 @@ import { trpc } from "@/components/providers/trpc-provider";
 export default function TicketsPage() {
   const { data: tickets, isLoading, error } = trpc.tickets.getAll.useQuery();
 
+  // Numero de serie
+  // El cliente puede hacer comentarios
+  // El cliente puede cambiar la priorizacion
+  // La actualizacion del ticket deveria enviar un correo
+    // Cuando comenta un usuario envia un comentario
   if (isLoading) {
     return (
       <div className="space-y-4 p-4 md:p-8 pt-6">

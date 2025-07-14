@@ -26,6 +26,24 @@ import {
   TestConnectionResponseSchema,
 } from './schemas';
 
+// Helper function to check user role from database to avoid RLS recursion
+async function checkUserRole(ctx: any, allowedRoles: string[]) {
+  // This initial query is necessary to avoid RLS recursion
+  const { data: currentUser, error: userError } = await ctx.supabase
+    .from('users')
+    .select('role')
+    .eq('id', ctx.session!.user.id)
+    .single();
+  
+  if (userError || !currentUser || !allowedRoles.includes(currentUser.role)) {
+    throw new TRPCError({ 
+      code: 'FORBIDDEN', 
+      message: `Access requires one of these roles: ${allowedRoles.join(', ')}` 
+    });
+  }
+  return currentUser.role;
+}
+
 export const appRouter = createTRPCRouter({
   // Auth routes
   auth: createTRPCRouter({
@@ -37,22 +55,13 @@ export const appRouter = createTRPCRouter({
   // User routes
   users: createTRPCRouter({
     getAll: protectedProcedure.query(async ({ ctx }) => {
-      // Check user role within the procedure to avoid recursion
-      const { data: currentUser, error: userError } = await ctx.supabase
-        .from('users')
-        .select('role')
-        .eq('id', ctx.session!.user.id)
-        .single();
-      
-      if (userError || !currentUser || !['admin', 'technician'].includes(currentUser.role)) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin or technician access required' });
-      }
+      // Check if user has admin or technician role
 
       const { data, error } = await ctx.supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
-
+      
       if (error) throw error;
       return data;
     }),
@@ -60,16 +69,8 @@ export const appRouter = createTRPCRouter({
     create: protectedProcedure
       .input(CreateUserInputSchema)
       .mutation(async ({ ctx, input }) => {
-        // Check user role within the procedure
-        const { data: currentUser, error: userError } = await ctx.supabase
-          .from('users')
-          .select('role')
-          .eq('id', ctx.session!.user.id)
-          .single();
-        
-        if (userError || !currentUser || currentUser.role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-        }
+        // Check if user has admin role
+        await checkUserRole(ctx, ['admin']);
 
         const { data, error } = await ctx.supabase
           .from('users')
@@ -84,16 +85,8 @@ export const appRouter = createTRPCRouter({
     update: protectedProcedure
       .input(UpdateUserInputSchema)
       .mutation(async ({ ctx, input }) => {
-        // Check user role within the procedure
-        const { data: currentUser, error: userError } = await ctx.supabase
-          .from('users')
-          .select('role')
-          .eq('id', ctx.session!.user.id)
-          .single();
-        
-        if (userError || !currentUser || currentUser.role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-        }
+        // Check if user has admin role
+        await checkUserRole(ctx, ['admin']);
 
         const { id, ...updateData } = input;
         const { data, error } = await ctx.supabase
@@ -110,16 +103,8 @@ export const appRouter = createTRPCRouter({
     delete: protectedProcedure
       .input(IdParamSchema)
       .mutation(async ({ ctx, input }) => {
-        // Check user role within the procedure
-        const { data: currentUser, error: userError } = await ctx.supabase
-          .from('users')
-          .select('role')
-          .eq('id', ctx.session!.user.id)
-          .single();
-        
-        if (userError || !currentUser || currentUser.role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-        }
+        // Check if user has admin role
+        await checkUserRole(ctx, ['admin']);
 
         const { error } = await ctx.supabase
           .from('users')
@@ -368,7 +353,7 @@ export const appRouter = createTRPCRouter({
     getAll: protectedProcedure.query(async ({ ctx }) => {
       // Use the view that includes service tags
       const { data, error } = await ctx.supabase
-        .from('tickets_with_service_tags')
+        .from('tickets')
         .select(`
           *,
           reported_user:users!tickets_reported_by_fkey (
@@ -610,16 +595,8 @@ export const appRouter = createTRPCRouter({
       }),
 
     getPendingApproval: protectedProcedure.query(async ({ ctx }) => {
-      // Check user role - only admins and technicians can view pending tickets
-      const { data: currentUser, error: userError } = await ctx.supabase
-        .from('users')
-        .select('role')
-        .eq('id', ctx.session!.user.id)
-        .single();
-      
-      if (userError || !currentUser || !['admin', 'technician'].includes(currentUser.role)) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin or technician access required' });
-      }
+      // Check if user has admin or technician role
+      await checkUserRole(ctx, ['admin', 'technician']);
 
       try {
         const { data, error } = await ctx.supabase.rpc('get_pending_approval_tickets');
@@ -649,16 +626,8 @@ export const appRouter = createTRPCRouter({
         rejection_reason: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Check user role - only admins can approve tickets
-        const { data: currentUser, error: userError } = await ctx.supabase
-          .from('users')
-          .select('role')
-          .eq('id', ctx.session!.user.id)
-          .single();
-        
-        if (userError || !currentUser || currentUser.role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-        }
+        // Check if user has admin role
+        await checkUserRole(ctx, ['admin']);
 
         try {
           const { data, error } = await ctx.supabase.rpc('approve_public_ticket', {

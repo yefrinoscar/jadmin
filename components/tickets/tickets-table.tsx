@@ -40,11 +40,17 @@ import { Card, CardContent } from "@/components/ui/card"
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter"
 import { ticketColumns } from "./ticket-columns"
 import { TicketDrawer } from "./ticket-drawer"
-import { Ticket, ServiceTag, ticketStatuses, ticketPriorities, ticketSources } from "@/lib/types/ticket"
+import { 
+  TicketWithRelations, 
+  ServiceTag, 
+  ticketStatuses, 
+  ticketPriorities, 
+  ticketSources 
+} from "@/lib/schemas/ticket"
 import { format } from "date-fns"
 
 interface TicketsTableProps {
-  data: Ticket[]
+  data: TicketWithRelations[]
 }
 
 export function TicketsTable({ data }: TicketsTableProps) {
@@ -52,7 +58,7 @@ export function TicketsTable({ data }: TicketsTableProps) {
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
-  const [selectedTicket, setSelectedTicket] = React.useState<Ticket | null>(null)
+  const [selectedTicket, setSelectedTicket] = React.useState<TicketWithRelations | null>(null)
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = React.useState(false)
   const [showPinnedShadow, setShowPinnedShadow] = React.useState(false)
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
@@ -107,7 +113,7 @@ export function TicketsTable({ data }: TicketsTableProps) {
     }
   }, [handleScroll, data])
 
-  const handleRowClick = (ticket: Ticket, event: React.MouseEvent) => {
+  const handleRowClick = (ticket: TicketWithRelations, event: React.MouseEvent) => {
     // Don't open drawer if clicking on checkbox, buttons, or other interactive elements
     const target = event.target as HTMLElement
     if (target.closest('button, input, [role="button"]')) {
@@ -327,7 +333,7 @@ export function TicketsTable({ data }: TicketsTableProps) {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Asignado:</span>
-                      <p className="mt-1 font-medium">{ticket.assigned_to || 'Sin asignar'}</p>
+                      <p className="mt-1 font-medium">{ticket.assigned_user?.name || 'Sin asignar'}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Fuente:</span>

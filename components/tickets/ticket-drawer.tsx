@@ -42,14 +42,19 @@ import {
   ArrowRight
 } from "lucide-react"
 import { cn, cleanUserName } from "@/lib/utils"
-import { Ticket } from "@/lib/types/ticket"
+import { 
+  TicketWithRelations, 
+  ServiceTag,
+  TICKET_STATUS_LABELS, 
+  TICKET_PRIORITY_LABELS, 
+  TICKET_SOURCE_LABELS 
+} from "@/lib/schemas/ticket"
 import { format } from "date-fns"
-import { TICKET_STATUS_LABELS, TICKET_PRIORITY_LABELS, TICKET_SOURCE_LABELS } from "@/lib/schemas"
 import { trpc } from "@/components/providers/trpc-provider"
 import { toast } from "sonner"
 
 interface TicketDrawerProps {
-  ticket: Ticket | null
+  ticket: TicketWithRelations | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -383,8 +388,8 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {ticket.service_tags.map((serviceTag, index) => (
-                      <div key={index} className="border rounded-lg p-4 hover:bg-muted/20 transition-colors">
+                    {ticket.service_tags.map((serviceTag: ServiceTag, index: number) => (
+                      <div key={serviceTag.id} className="border rounded-lg p-4 hover:bg-muted/20 transition-colors">
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <code className="text-sm font-bold bg-primary/10 text-primary px-2 py-1 rounded">

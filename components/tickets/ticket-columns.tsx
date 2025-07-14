@@ -1,7 +1,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown, MoreHorizontal, Copy, Building2 } from "lucide-react"
 
-import { cn, parseServiceTags, cleanUserName } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,14 +13,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Ticket } from "@/lib/types/ticket"
-import { User } from "@/lib/schemas"
+import { 
+  TicketWithRelations, 
+  User, 
+  TicketStatus,
+  TicketPriority,
+  TICKET_STATUS_LABELS,
+  TICKET_PRIORITY_LABELS
+} from "@/lib/schemas/ticket"
 import { AssignUserPopover } from "./assign-user-popover"
 import { InteractiveStatusSelector } from "./interactive-status-selector"
 import { InteractivePrioritySelector } from "./interactive-priority-selector"
-import { TICKET_STATUS_LABELS, TICKET_PRIORITY_LABELS } from "@/lib/schemas"
 
-export const ticketColumns: ColumnDef<Ticket>[] = [
+export const ticketColumns: ColumnDef<TicketWithRelations>[] = [
   {
     id: "select",
     header: ({ table }) => (
@@ -204,7 +209,7 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
     accessorKey: "status",
     header: "Estado",
     cell: ({ row }) => {
-      const status = row.getValue("status") as keyof typeof TICKET_STATUS_LABELS
+      const status = row.getValue("status") as TicketStatus
       const ticket = row.original
       
       return (
@@ -224,7 +229,7 @@ export const ticketColumns: ColumnDef<Ticket>[] = [
     accessorKey: "priority",
     header: "Prioridad",
     cell: ({ row }) => {
-      const priority = row.getValue("priority") as keyof typeof TICKET_PRIORITY_LABELS
+      const priority = row.getValue("priority") as TicketPriority
       const ticket = row.original
       
       return (

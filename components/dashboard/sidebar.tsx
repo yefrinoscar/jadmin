@@ -7,12 +7,17 @@ import {
   TicketIcon, 
   Building2, 
   Users,
-  Settings,
-  LogOut 
+  LogOut,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { trpc } from "@/components/providers/trpc-provider";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import type { User } from '@supabase/supabase-js';
+import { toast } from "sonner";
+import { useState } from "react";
 
 const navigation = [
   { name: "Panel de Control", href: "/dashboard", icon: Home },
@@ -21,18 +26,62 @@ const navigation = [
   { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true },
 ];
 
+const roleLabels: Record<string, string> = {
+  admin: "Administrador",
+  technician: "Técnico",
+  client: "Cliente",
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const utils = trpc.useUtils();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   
-  // In a real app, you'd get the user role from your user data
-  // For now, we'll assume admin role - you should implement proper role checking
-  const isAdmin = true; // This should come from your user context/session
+  // Get current user session and data
+  const { data: session, isLoading: isSessionLoading } = trpc.auth.getSession.useQuery();
+  console.log(session);
+  const userMetadata = (session?.user as User)?.user_metadata;
+  const userRole = userMetadata?.role;
+  const isAdmin = userRole === 'admin';
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
+    try {
+      setIsSigningOut(true);
+
+      // Get browser client for auth operations
+      const supabase = createBrowserSupabaseClient();
+
+      // Invalidate all tRPC queries first
+      await utils.invalidate();
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // Force a router refresh and redirect
+      router.refresh();
+      router.replace("/login");
+    } catch (error) {
+      console.error("Error signing out:", error);
+      toast.dismiss();
+      toast.error("Error al cerrar sesión. Por favor intente de nuevo.");
+      setIsSigningOut(false);
+    }
   };
+
+  if (isSessionLoading || isSigningOut) {
+    return (
+      <div className="flex h-screen w-64 items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">
+            {isSigningOut ? "Cerrando sesión..." : "Cargando..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-64 flex-col border-r border-gray-200">
@@ -76,30 +125,43 @@ export function Sidebar() {
 
       {/* User Section */}
       <div className="p-4 border-t border-gray-200">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium text-gray-600">U</span>
-          </div>
+        <div className="flex items-center gap-3 mb-4">
+          <Avatar className="w-10 h-10">
+            <AvatarFallback className="bg-blue-100 text-blue-700">
+              {userMetadata?.name?.[0].toUpperCase() || session?.user?.email?.[0].toUpperCase() || 'U'}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">User</p>
-            <p className="text-xs text-gray-500">
-              {isAdmin ? "Administrator" : "Team Member"}
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {userMetadata?.name || 'Usuario'}
             </p>
+            <p className="text-xs text-gray-500 truncate">
+              {session?.user?.email}
+            </p>
+            <div className="mt-1">
+              <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                {userRole ? roleLabels[userRole] : 'Usuario'}
+              </span>
+            </div>
           </div>
         </div>
         
-        <div className="space-y-1">
-          <Button variant="ghost" className="w-full justify-start gap-3">
-            <Settings className="w-4 h-4" />
-            Settings
-          </Button>
+        <div>
           <Button 
             variant="ghost" 
             className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50"
             onClick={handleSignOut}
+            disabled={isSigningOut}
           >
             <LogOut className="w-4 h-4" />
-            Sign Out
+            {isSigningOut ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Cerrando sesión...
+              </span>
+            ) : (
+              "Sign Out"
+            )}
           </Button>
         </div>
       </div>
