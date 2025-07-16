@@ -18,6 +18,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner";
 import { useState } from "react";
+import { useTRPC } from "@/trpc/client"
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const navigation = [
   { name: "Panel de Control", href: "/dashboard", icon: Home },
@@ -27,23 +29,31 @@ const navigation = [
 ];
 
 const roleLabels: Record<string, string> = {
+  superadmin: "Super Administrador",
   admin: "Administrador",
   technician: "Técnico",
   client: "Cliente",
 };
 
+const roleColors: Record<string, string> = {
+  superadmin: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
+  admin: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
+  technician: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+  client: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const utils = trpc.useUtils();
   const [isSigningOut, setIsSigningOut] = useState(false);
-  
-  // Get current user session and data
-  const { data: session, isLoading: isSessionLoading } = trpc.auth.getSession.useQuery();
-  console.log(session);
-  const userMetadata = (session?.user as User)?.user_metadata;
+  const trpc = useTRPC();
+  const queryClient = useQueryClient()
+
+  const { data: user, isLoading: isSessionLoading } = useQuery(trpc.auth.getSession.queryOptions());
+
+  const userMetadata = (user as User)?.user_metadata;
   const userRole = userMetadata?.role;
-  const isAdmin = userRole === 'admin';
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
   const handleSignOut = async () => {
     try {
@@ -53,7 +63,7 @@ export function Sidebar() {
       const supabase = createBrowserSupabaseClient();
 
       // Invalidate all tRPC queries first
-      await utils.invalidate();
+      await queryClient.invalidateQueries();
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
@@ -128,7 +138,7 @@ export function Sidebar() {
         <div className="flex items-center gap-3 mb-4">
           <Avatar className="w-10 h-10">
             <AvatarFallback className="bg-blue-100 text-blue-700">
-              {userMetadata?.name?.[0].toUpperCase() || session?.user?.email?.[0].toUpperCase() || 'U'}
+              {userMetadata?.name?.[0].toUpperCase() || user?.email?.[0].toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
@@ -136,10 +146,10 @@ export function Sidebar() {
               {userMetadata?.name || 'Usuario'}
             </p>
             <p className="text-xs text-gray-500 truncate">
-              {session?.user?.email}
+              {user?.email}
             </p>
             <div className="mt-1">
-              <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${userRole && roleColors[userRole] ? roleColors[userRole] : 'bg-blue-50 text-blue-700'}`}>
                 {userRole ? roleLabels[userRole] : 'Usuario'}
               </span>
             </div>

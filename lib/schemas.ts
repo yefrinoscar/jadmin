@@ -4,7 +4,7 @@ import { z } from 'zod';
 // ENUM SCHEMAS
 // =============================================================================
 
-export const UserRoleSchema = z.enum(['admin', 'technician', 'client']);
+export const UserRoleSchema = z.enum(['superadmin', 'admin', 'technician', 'client']);
 export const TicketStatusSchema = z.enum(['pending_approval', 'open', 'in_progress', 'resolved', 'closed']);
 export const TicketPrioritySchema = z.enum(['low', 'medium', 'high']);
 export const TicketSourceSchema = z.enum(['email', 'phone', 'web', 'in_person']);
@@ -18,16 +18,16 @@ export const UserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
   role: UserRoleSchema,
+  auth_id: z.string().nullable(),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
 
 export const ClientSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().min(1),
-  address: z.string().min(1),
+  email: z.string().email().nullable(),
+  phone: z.string().min(1).nullable(),
+  address: z.string().min(1).nullable(),
   company_name: z.string().min(1),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
@@ -79,14 +79,27 @@ export const CreateUserInputSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   name: z.string().min(1, 'Name is required'),
   role: UserRoleSchema,
+  // Password is optional in the base schema but will be required in the router
+  // This allows the schema to be used in other contexts where password isn't needed
+  password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+  // Client ID is required only when role is 'client'
+  client_id: z.string().uuid('Please select a valid client').optional(),
+}).refine(data => {
+  // If role is client, client_id is required
+  if (data.role === 'client') {
+    return !!data.client_id;
+  }
+  return true;
+}, {
+  message: "Client selection is required for users with 'client' role",
+  path: ["client_id"],
 });
 
 export const CreateClientInputSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().min(1, 'Phone is required'),
-  address: z.string().min(1, 'Address is required'),
-  company_name: z.string().min(1, 'Company name is required'),
+  email: z.string().email('Por favor ingrese un correo electrónico válido').nullable().optional(),
+  phone: z.string().min(1, 'El teléfono es requerido').nullable().optional(),
+  address: z.string().min(1, 'La dirección es requerida').nullable().optional(),
+  company_name: z.string().min(1, 'El nombre de la empresa es requerido'),
 });
 
 export const CreateServiceTagInputSchema = z.object({
@@ -334,9 +347,10 @@ export const TICKET_SOURCE_LABELS = {
 } as const;
 
 export const USER_ROLE_LABELS = {
-  admin: 'Administrador',
+  superadmin: 'superadmin',
+  admin: 'admin',
   technician: 'Técnico',
-  client: 'Cliente',
+  client: 'Cliente'
 } as const;
 
 // Helper schemas for validation

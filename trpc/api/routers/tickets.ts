@@ -1,0 +1,327 @@
+import { TRPCError } from '@trpc/server';
+import { createTRPCRouter, protectedProcedure } from '../../init';
+import {
+  CreateTicketSchema as CreateTicketInputSchema,
+  UpdateTicketSchema as UpdateTicketInputSchema,
+  TicketWithRelationsSchema,
+  TicketStatusEnum,
+  TicketPriorityEnum,
+  TicketSourceEnum,
+  ServiceTagSchema
+} from '@/lib/schemas/ticket';
+import { SuccessResponseSchema } from '@/lib/schemas';
+import { z } from 'zod';
+
+// Define schemas
+const IdParamSchema = z.object({
+  id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format")
+});
+
+const ClientIdParamSchema = z.object({
+  clientId: z.string().uuid("Invalid client ID")
+});
+
+const ServiceTagIdSchema = z.object({
+  id: z.string().uuid()
+});
+
+const TicketStatusUpdateSchema = z.object({
+  id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
+  status: TicketStatusEnum
+});
+
+const TicketAssignmentSchema = z.object({ 
+  id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
+  assigned_user_id: z.string().uuid().nullable()
+});
+
+// Define output schema for getAll tickets
+// Schema for ticket list items that will be used in the UI
+export const TicketListItemSchema = z.object({
+  id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
+  title: z.string(),
+  description: z.string(),
+  status: TicketStatusEnum,
+  priority: TicketPriorityEnum,
+  source: TicketSourceEnum,
+  created_at: z.string(),
+  updated_at: z.string(),
+  client_company_name: z.string(),
+  reported_by: z.object({
+    id: z.string().uuid(),
+    name: z.string()
+  }),
+  assigned_user: z.object({
+    id: z.string().uuid(),
+    name: z.string()
+  }).nullable(),
+  ticket_service_tags: z.array(
+    z.object({
+      id: z.string(),
+      tag: z.string(),
+      description: z.string()
+    })
+  )
+});
+
+const TicketsListOutputSchema = z.array(TicketListItemSchema);
+
+// Export type for use in components
+export type TicketListItem = z.infer<typeof TicketListItemSchema>;
+
+export const ticketsRouter = createTRPCRouter({
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    const { data, error } = await ctx.supabase
+      .from('tickets')
+      .select(`
+        *,
+        clients:client_id (
+          id,
+          name
+        ),
+        ticket_service_tags!ticket_id (
+          service_tag:service_tag_id (
+            id,
+            tag,
+            description
+          )
+        ),
+        assigned:users!assigned_to (
+          id,
+          name
+        ),
+        reported:users!reported_by (
+          id,
+          name
+        )
+      `)
+      .order('created_at', { ascending: false});
+
+    if (error) throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Failed to fetch tickets: ${error.message}`,
+      cause: error
+    });
+    
+    // Transform the data to match our schema
+    const formattedTickets = data.map(ticket => ({
+      id: ticket.id,
+      title: ticket.title,
+      description: ticket.description,
+      status: ticket.status,
+      priority: ticket.priority,
+      source: ticket.source,
+      created_at: ticket.created_at,
+      updated_at: ticket.updated_at,
+      client_company_name: ticket.clients?.name || '',
+      reported_by: {
+        id: ticket.reported?.id || '',
+        name: ticket.reported?.name || ''
+      },
+      assigned_user: ticket.assigned ? {
+        id: ticket.assigned.id,
+        name: ticket.assigned.name
+      } : null,
+      ticket_service_tags: ticket.ticket_service_tags?.map((tag: { service_tag: { id: string, tag: string, description: string } }) => ({
+        id: tag.service_tag.id,
+        tag: tag.service_tag.tag,
+        description: tag.service_tag.description
+      })) || []
+    }));
+    
+    // Validate the output using our schema
+    return TicketsListOutputSchema.parse(formattedTickets);
+  }),
+
+  getById: protectedProcedure
+    .input(IdParamSchema)
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .select(`
+          *,
+          clients:client_id (
+            id,
+            name
+          ),
+          ticket_service_tags!ticket_id (
+            service_tag:service_tag_id (
+              id,
+              tag,
+              description
+            )
+          ),
+          assigned_to:assigned_user_id (
+            id,
+            name
+          ),
+          created_by:user_id (
+            id,
+            name
+          )
+        `)
+        .eq('id', input.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    }),
+
+  getByClientId: protectedProcedure
+    .input(ClientIdParamSchema)
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .select(`
+          *,
+          ticket_service_tags!ticket_id (
+            service_tag:service_tag_id (
+              id,
+              tag,
+              description
+            )
+          ),
+          assigned_to:assigned_user_id (
+            id,
+            name
+          ),
+          created_by:user_id (
+            id,
+            name
+          )
+        `)
+        .eq('client_id', input.clientId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    }),
+
+  getByServiceTagId: protectedProcedure
+    .input(ServiceTagIdSchema)
+    .query(async ({ ctx, input }) => {
+      // First get the ticket IDs that have this service tag
+      const { data: ticketServiceTags, error: junctionError } = await ctx.supabase
+        .from('ticket_service_tags')
+        .select('ticket_id')
+        .eq('service_tag_id', input.id);
+      
+      if (junctionError) throw junctionError;
+      
+      // If no tickets found with this service tag, return empty array
+      if (!ticketServiceTags || ticketServiceTags.length === 0) {
+        return [];
+      }
+      
+      // Get the ticket IDs
+      const ticketIds = ticketServiceTags.map(item => item.ticket_id);
+      
+      // Then get the tickets with those IDs
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .select(`
+          *,
+          clients:client_id (
+            id,
+            name
+          ),
+          ticket_service_tags!ticket_id (
+            service_tag:service_tag_id (
+              id,
+              tag,
+              description
+            )
+          ),
+          assigned_to:assigned_user_id (
+            id,
+            name
+          ),
+          created_by:user_id (
+            id,
+            name
+          )
+        `)
+        .in('id', ticketIds)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    }),
+
+  create: protectedProcedure
+    .input(CreateTicketInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Add the current user as the creator
+      const ticketData = {
+        ...input,
+        user_id: ctx.user.id,
+        status: 'open'
+      };
+
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .insert([ticketData])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }),
+
+  update: protectedProcedure
+    .input(UpdateTicketInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...updateData } = input;
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }),
+
+  updateStatus: protectedProcedure
+    .input(TicketStatusUpdateSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { id, status } = input;
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .update({ status })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }),
+
+  assignTicket: protectedProcedure
+    .input(TicketAssignmentSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { id, assigned_user_id } = input;
+      const { data, error } = await ctx.supabase
+        .from('tickets')
+        .update({ assigned_user_id })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }),
+
+  delete: protectedProcedure
+    .input(IdParamSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from('tickets')
+        .delete()
+        .eq('id', input.id);
+
+      if (error) throw error;
+      return SuccessResponseSchema.parse({ success: true });
+    }),
+});

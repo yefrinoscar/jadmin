@@ -47,14 +47,16 @@ export type Database = {
           email: string;
           name: string;
           role: 'admin' | 'technician' | 'client';
+          auth_id: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
-          id: string;
+          id?: string;
           email: string;
           name: string;
           role?: 'admin' | 'technician' | 'client';
+          auth_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -63,6 +65,7 @@ export type Database = {
           email?: string;
           name?: string;
           role?: 'admin' | 'technician' | 'client';
+          auth_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

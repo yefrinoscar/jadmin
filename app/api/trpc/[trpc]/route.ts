@@ -1,9 +1,9 @@
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
-import { appRouter } from '../../../../lib/server';
 import type { TRPCError } from '@trpc/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '../../../../lib/database.types';
+import { appRouter } from '@/trpc/api/root';
 
 const createContext = async (opts: { req: Request }) => {
   const cookieStore = await cookies();
@@ -31,8 +31,8 @@ const createContext = async (opts: { req: Request }) => {
     }
   );
   
-  const { data: { session } } = await supabase.auth.getSession();
-  return { session, supabase };
+  const { data: { user } } = await supabase.auth.getUser();
+  return { user, supabase };
 };
 
 const handler = (req: Request) =>

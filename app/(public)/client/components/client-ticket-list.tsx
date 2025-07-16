@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { trpc } from "@/components/providers/trpc-provider";
+import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { 
   Clock, 
   AlertTriangle,
@@ -47,9 +48,8 @@ export function ClientTicketList({ clientId }: ClientTicketListProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
 
-  // Use the existing getAll query and filter client-side for now
-  // In a production app, you'd want a dedicated endpoint for client tickets
-  const { data: allTickets, isLoading, error } = trpc.tickets.getAll.useQuery();
+  const trpc = useTRPC();
+  const { data: allTickets, isLoading, error } = useQuery(trpc.tickets.getAll.queryOptions());
 
   // Filter tickets for this specific client
   const clientTickets = allTickets?.filter((ticket: any) => 

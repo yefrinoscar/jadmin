@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UserSchema } from "../schemas";
 
 // Enums
 export const TicketPriorityEnum = z.enum(["low", "medium", "high"]);
@@ -41,16 +42,6 @@ export const ServiceTagSchema = z.object({
   client_id: z.string().uuid(),
 });
 
-// User Schema (complete version matching application requirements)
-export const UserSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  email: z.string().email(),
-  role: z.enum(["admin", "technician", "client"]),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-});
-
 // Base Ticket Schema
 export const BaseTicketSchema = z.object({
   id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
@@ -83,7 +74,7 @@ export const TicketSchema = BaseTicketSchema.extend({
 // Ticket with all related data
 export const TicketWithRelationsSchema = TicketSchema.extend({
   client_company_name: z.string(),
-  service_tags: z.array(ServiceTagSchema),
+  ticket_service_tags: z.array(ServiceTagSchema),
   reported_user: UserSchema,
   assigned_user: UserSchema.nullable(),
   approved_user: UserSchema.nullable(),
