@@ -103,7 +103,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   const { data, isLoading } = useQuery(
     {
       ...queryOptions({ clientId: client?.id || '' }),
-      enabled: !!client?.id && open
+      enabled: !!client?.id && open // Only run query if client ID exists and drawer is open
     }
   )
   
@@ -269,7 +269,12 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
     }
   }
 
-  if (!client) {
+  // Don't render the drawer or execute any logic if there's no valid client
+  if (!client || !client.id) {
+    // Close the drawer if it's somehow open without a valid client
+    if (open) {
+      onClose()
+    }
     return null
   }
 

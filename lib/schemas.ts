@@ -34,14 +34,14 @@ export const ClientSchema = z.object({
 });
 
 export const ServiceTagSchema = z.object({
-  id: z.string().regex(/^ST-\d{6}$/, 'Invalid service tag ID format'),
+  id: z.string().regex(/^ST-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[4][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/, 'Invalid service tag ID format'),
   tag: z.string().min(1),
   description: z.string().min(1),
   client_id: z.string().uuid(),
   hardware_type: z.string().min(1),
   location: z.string().min(1),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
 });
 
 export const TicketSchema = z.object({

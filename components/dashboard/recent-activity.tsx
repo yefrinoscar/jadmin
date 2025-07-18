@@ -194,8 +194,8 @@ export function RecentActivity() {
                       {/* Display service tags if available */}
                       {activity.serviceTags && activity.serviceTags.length > 0 && (
                         <Badge variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200">
-                          {activity.serviceTags[0].tag}
-                          {activity.serviceTags.length > 1 && ` +${activity.serviceTags.length - 1}`}
+                          {/* {activity.serviceTags[0].tag}
+                          {activity.serviceTags.length > 1 && ` +${activity.serviceTags.length - 1}`} */}
                         </Badge>
                       )}
                       

@@ -1,6 +1,7 @@
 "use client";
 
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { RouteLoadingIndicator } from "@/components/route-loading-indicator";
 
 export default function DashboardLayout({
   children,
@@ -18,6 +19,9 @@ export default function DashboardLayout({
       <main className="flex-1 overflow-auto p-4 md:p-6">
         {children}
       </main>
+
+      {/* Route Loading Indicator */}
+      <RouteLoadingIndicator />
     </div>
   );
-} 
+}

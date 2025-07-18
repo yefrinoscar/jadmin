@@ -16,7 +16,7 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
   };
 };
 
-export const createTRPCContext = async (opts: CreateNextContextOptions) => {
+export const createTRPCContext = async () => {
   const cookieStore = await cookies();
   
   // Create Supabase client with proper cookie handling

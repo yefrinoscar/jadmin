@@ -1,12 +1,19 @@
 import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../../init';
 import {
   CreateServiceTagInputSchema,
   UpdateServiceTagInputSchema,
   IdParamSchema,
   ClientIdParamSchema,
-  SuccessResponseSchema
+  SuccessResponseSchema,
+  ServiceTagSchema
 } from '@/lib/schemas';
+import { ServiceTagErrorCode, SERVICE_TAG_ERROR_MESSAGES } from '@/lib/errors';
+
+// Output schema for getByClientId endpoint
+export const SerialNumberListOutputSchema = z.array(ServiceTagSchema);
+export type SerialNumber = z.infer<typeof ServiceTagSchema>;
 
 export const serviceTagsRouter = createTRPCRouter({
   getAll: protectedProcedure.query(async ({ ctx }) => {
@@ -27,6 +34,7 @@ export const serviceTagsRouter = createTRPCRouter({
 
   getByClientId: protectedProcedure
     .input(ClientIdParamSchema)
+    .output(SerialNumberListOutputSchema)
     .query(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from('service_tags')
@@ -35,19 +43,51 @@ export const serviceTagsRouter = createTRPCRouter({
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return SerialNumberListOutputSchema.parse(data);
     }),
 
   create: protectedProcedure
     .input(CreateServiceTagInputSchema)
     .mutation(async ({ ctx, input }) => {
+      // Primero verificamos si ya existe un tag con el mismo nombre para este cliente
+      const { data: existingTags, error: checkError } = await ctx.supabase
+        .from('service_tags')
+        .select('id')
+        .eq('tag', input.tag)
+        .eq('client_id', input.client_id);
+
+      if (checkError) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: SERVICE_TAG_ERROR_MESSAGES[ServiceTagErrorCode.UNKNOWN_ERROR](checkError.message),
+          cause: ServiceTagErrorCode.UNKNOWN_ERROR
+        });
+      }
+
+      // Si encontramos tags con el mismo nombre, lanzamos un error
+      if (existingTags && existingTags.length > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: SERVICE_TAG_ERROR_MESSAGES[ServiceTagErrorCode.DUPLICATE_TAG](input.tag),
+          cause: ServiceTagErrorCode.DUPLICATE_TAG
+        });
+      }
+
+      // Si no hay duplicados, procedemos con la inserción
       const { data, error } = await ctx.supabase
         .from('service_tags')
         .insert([input])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: SERVICE_TAG_ERROR_MESSAGES[ServiceTagErrorCode.UNKNOWN_ERROR](error.message),
+          cause: ServiceTagErrorCode.UNKNOWN_ERROR
+        });
+      }
+      
       return data;
     }),
 

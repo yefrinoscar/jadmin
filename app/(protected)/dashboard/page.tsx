@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const openTickets = tickets?.filter(t => t.status === 'open').length || 0;
   const inProgressTickets = tickets?.filter(t => t.status === 'in_progress').length || 0;
   const resolvedTickets = tickets?.filter(t => t.status === 'resolved').length || 0;
-  const criticalTickets = tickets?.filter(t => t.priority === 'critical').length || 0;
+  const criticalTickets = tickets?.filter(t => t.priority === 'high').length || 0;
   const totalClients = clients?.length || 0;
   const totalServiceTags = serviceTags?.length || 0;
   const totalUsers = users?.length || 0;
@@ -63,8 +63,8 @@ export default function DashboardPage() {
         type: 'ticket',
         title: ticket.title,
         description: `Prioridad: ${ticket.priority} | Estado: ${ticket.status}`,
-        user: ticket.created_by?.name || 'Sistema',
-        timestamp: ticket.time_open || ticket.created_at,
+        user: ticket?.assigned_user?.name || 'Sistema',
+        timestamp: ticket.created_at,
         status: ticket.status,
         priority: ticket.priority,
         serviceTags: serviceTags
@@ -242,7 +242,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {tickets?.filter(t => t.status === 'open' && t.priority === 'critical')
+                    {tickets?.filter(t => t.status === 'open' && t.priority === 'high')
                       .slice(0, 5)
                       .map((ticket) => (
                         <div key={ticket.id} className="flex items-start gap-3 p-3 border border-red-100 bg-red-50 rounded-lg">
@@ -257,7 +257,7 @@ export default function DashboardPage() {
                                 Crítico
                               </Badge>
                               <span className="text-xs text-gray-500">
-                                {formatDistanceToNow(new Date(ticket.time_open), { addSuffix: true })}
+                                {formatDistanceToNow(new Date(ticket.created_at), { addSuffix: true })}
                               </span>
                             </div>
                           </div>
@@ -269,7 +269,7 @@ export default function DashboardPage() {
                         </div>
                       ))
                     }
-                    {tickets?.filter(t => t.status === 'open' && t.priority === 'critical').length === 0 && (
+                    {tickets?.filter(t => t.status === 'open' && t.priority === 'high').length === 0 && (
                       <div className="text-center py-8">
                         <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-4" />
                         <p className="text-gray-500">No hay tickets críticos pendientes</p>

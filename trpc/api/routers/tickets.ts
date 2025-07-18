@@ -30,7 +30,7 @@ const TicketStatusUpdateSchema = z.object({
   status: TicketStatusEnum
 });
 
-const TicketAssignmentSchema = z.object({ 
+const TicketAssignmentSchema = z.object({
   id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
   assigned_user_id: z.string().uuid().nullable()
 });
@@ -46,6 +46,7 @@ export const TicketListItemSchema = z.object({
   source: TicketSourceEnum,
   created_at: z.string(),
   updated_at: z.string(),
+  client_id: z.string().uuid(),
   client_company_name: z.string(),
   reported_by: z.object({
     id: z.string().uuid(),
@@ -95,14 +96,14 @@ export const ticketsRouter = createTRPCRouter({
           name
         )
       `)
-      .order('created_at', { ascending: false});
+      .order('created_at', { ascending: false });
 
     if (error) throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: `Failed to fetch tickets: ${error.message}`,
       cause: error
     });
-    
+
     // Transform the data to match our schema
     const formattedTickets = data.map(ticket => ({
       id: ticket.id,
@@ -113,6 +114,7 @@ export const ticketsRouter = createTRPCRouter({
       source: ticket.source,
       created_at: ticket.created_at,
       updated_at: ticket.updated_at,
+      client_id: ticket.client_id,
       client_company_name: ticket.clients?.name || '',
       reported_by: {
         id: ticket.reported?.id || '',
@@ -128,7 +130,7 @@ export const ticketsRouter = createTRPCRouter({
         description: tag.service_tag.description
       })) || []
     }));
-    
+
     // Validate the output using our schema
     return TicketsListOutputSchema.parse(formattedTickets);
   }),
@@ -144,21 +146,21 @@ export const ticketsRouter = createTRPCRouter({
             id,
             name
           ),
-          ticket_service_tags!ticket_id (
-            service_tag:service_tag_id (
-              id,
-              tag,
-              description
-            )
-          ),
-          assigned_to:assigned_user_id (
+        ticket_service_tags!ticket_id (
+          service_tag:service_tag_id (
             id,
-            name
-          ),
-          created_by:user_id (
-            id,
-            name
+            tag,
+            description
           )
+        ),
+        assigned:users!assigned_to (
+          id,
+          name
+        ),
+        reported:users!reported_by (
+          id,
+          name
+        )
         `)
         .eq('id', input.id)
         .single();
@@ -205,17 +207,17 @@ export const ticketsRouter = createTRPCRouter({
         .from('ticket_service_tags')
         .select('ticket_id')
         .eq('service_tag_id', input.id);
-      
+
       if (junctionError) throw junctionError;
-      
+
       // If no tickets found with this service tag, return empty array
       if (!ticketServiceTags || ticketServiceTags.length === 0) {
         return [];
       }
-      
+
       // Get the ticket IDs
       const ticketIds = ticketServiceTags.map(item => item.ticket_id);
-      
+
       // Then get the tickets with those IDs
       const { data, error } = await ctx.supabase
         .from('tickets')
