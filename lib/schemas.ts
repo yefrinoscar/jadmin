@@ -1,10 +1,60 @@
 import { z } from 'zod';
 
+// Type definitions for Clerk metadata types
+export type UserPublicMetadata = Record<string, unknown>;
+export type UserPrivateMetadata = Record<string, unknown>;
+export type UserUnsafeMetadata = Record<string, unknown>;
+export type EmailAddress = Record<string, unknown>;
+export type PhoneNumber = Record<string, unknown>;
+export type Web3Wallet = Record<string, unknown>;
+export type ExternalAccount = Record<string, unknown>;
+export type SamlAccount = Record<string, unknown>;
+export type UserJSON = Record<string, unknown>;
+
+// =============================================================================
+// CLERK SCHEMAS
+// =============================================================================
+
+// Schema for Clerk User object
+export const ClerkUserSchema = z.object({
+  id: z.string(),
+  passwordEnabled: z.boolean(),
+  totpEnabled: z.boolean(),
+  backupCodeEnabled: z.boolean(),
+  twoFactorEnabled: z.boolean(),
+  banned: z.boolean(),
+  locked: z.boolean(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+  imageUrl: z.string(),
+  hasImage: z.boolean(),
+  primaryEmailAddressId: z.string().nullable(),
+  primaryPhoneNumberId: z.string().nullable(),
+  primaryWeb3WalletId: z.string().nullable(),
+  lastSignInAt: z.number().nullable(),
+  externalId: z.string().nullable(),
+  username: z.string().nullable(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  publicMetadata: z.record(z.unknown()).optional(),
+  privateMetadata: z.record(z.unknown()).optional(),
+  unsafeMetadata: z.record(z.unknown()).optional(),
+  emailAddresses: z.array(z.record(z.unknown())).optional(),
+  phoneNumbers: z.array(z.record(z.unknown())).optional(),
+  web3Wallets: z.array(z.record(z.unknown())).optional(),
+  externalAccounts: z.array(z.record(z.unknown())).optional(),
+  samlAccounts: z.array(z.record(z.unknown())).optional(),
+  lastActiveAt: z.number().nullable(),
+  createOrganizationEnabled: z.boolean(),
+  createOrganizationsLimit: z.number().nullable(),
+  deleteSelfEnabled: z.boolean(),
+  legalAcceptedAt: z.number().nullable(),
+});
+
 // =============================================================================
 // ENUM SCHEMAS
 // =============================================================================
-
-export const UserRoleSchema = z.enum(['admin', 'technician', 'client']);
+export const UserRoleSchema = z.enum(['superadmin', 'admin', 'technician', 'client']);
 export const TicketStatusSchema = z.enum(['pending_approval', 'open', 'in_progress', 'resolved', 'closed']);
 export const TicketPrioritySchema = z.enum(['low', 'medium', 'high']);
 export const TicketSourceSchema = z.enum(['email', 'phone', 'web', 'in_person']);
@@ -12,36 +62,46 @@ export const TicketSourceSchema = z.enum(['email', 'phone', 'web', 'in_person'])
 // =============================================================================
 // BASE ENTITY SCHEMAS (Database Row Types)
 // =============================================================================
+export const UserClerkSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  name: z.string().min(1),
+  role: UserRoleSchema,
+  auth_id: z.string().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+
 
 export const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
   name: z.string().min(1),
   role: UserRoleSchema,
+  auth_id: z.string().nullable(),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
 
 export const ClientSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().min(1),
-  address: z.string().min(1),
+  email: z.string().email().nullable(),
+  phone: z.string().min(1).nullable(),
+  address: z.string().min(1).nullable(),
   company_name: z.string().min(1),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
 
 export const ServiceTagSchema = z.object({
-  id: z.string().regex(/^ST-\d{6}$/, 'Invalid service tag ID format'),
+  id: z.string().regex(/^ST-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[4][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/, 'Invalid service tag ID format'),
   tag: z.string().min(1),
   description: z.string().min(1),
   client_id: z.string().uuid(),
   hardware_type: z.string().min(1),
   location: z.string().min(1),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
 });
 
 export const TicketSchema = z.object({
@@ -79,14 +139,27 @@ export const CreateUserInputSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   name: z.string().min(1, 'Name is required'),
   role: UserRoleSchema,
+  // Password is optional in the base schema but will be required in the router
+  // This allows the schema to be used in other contexts where password isn't needed
+  password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+  // Client ID is required only when role is 'client'
+  client_id: z.string().uuid('Please select a valid client').optional(),
+}).refine(data => {
+  // If role is client, client_id is required
+  if (data.role === 'client') {
+    return !!data.client_id;
+  }
+  return true;
+}, {
+  message: "Client selection is required for users with 'client' role",
+  path: ["client_id"],
 });
 
 export const CreateClientInputSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().min(1, 'Phone is required'),
-  address: z.string().min(1, 'Address is required'),
-  company_name: z.string().min(1, 'Company name is required'),
+  email: z.string().email('Por favor ingrese un correo electrónico válido').nullable().optional(),
+  phone: z.string().min(1, 'El teléfono es requerido').nullable().optional(),
+  address: z.string().min(1, 'La dirección es requerida').nullable().optional(),
+  company_name: z.string().min(1, 'El nombre de la empresa es requerido'),
 });
 
 export const CreateServiceTagInputSchema = z.object({
@@ -249,6 +322,14 @@ export type TicketPriority = z.infer<typeof TicketPrioritySchema>;
 export type TicketSource = z.infer<typeof TicketSourceSchema>;
 
 export type User = z.infer<typeof UserSchema>;
+export type ClerkUserInternal = z.infer<typeof ClerkUserSchema>;
+
+// Type for Clerk's User object with properly typed metadata
+export interface ClerkUser extends ClerkUserInternal {
+  publicMetadata: UserPublicMetadata;
+  privateMetadata: UserPrivateMetadata;
+  unsafeMetadata: UserUnsafeMetadata;
+}
 export type Client = z.infer<typeof ClientSchema>;
 export type ServiceTag = z.infer<typeof ServiceTagSchema>;
 export type Ticket = z.infer<typeof TicketSchema>;
@@ -334,9 +415,10 @@ export const TICKET_SOURCE_LABELS = {
 } as const;
 
 export const USER_ROLE_LABELS = {
-  admin: 'Administrador',
+  superadmin: 'superadmin',
+  admin: 'admin',
   technician: 'Técnico',
-  client: 'Cliente',
+  client: 'Cliente'
 } as const;
 
 // Helper schemas for validation

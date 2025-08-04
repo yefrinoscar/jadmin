@@ -25,22 +25,29 @@ Esta API permite a sitios web externos enviar tickets sin autenticación previa,
 ### JavaScript/Fetch
 
 ```javascript
+// Create form data
+const formData = new FormData();
+formData.append('title', 'Sistema de punto de venta no responde');
+formData.append('description', 'El sistema POS se cuelga cuando intentamos procesar pagos con tarjeta. Necesitamos solución urgente.');
+formData.append('company_name', 'Restaurante El Buen Sabor');
+formData.append('service_tag_names[]', 'POS-001');
+formData.append('service_tag_names[]', 'TERMINAL-PRINCIPAL');
+formData.append('contact_name', 'María González');
+formData.append('contact_email', 'maria.gonzalez@elbuensabor.com');
+formData.append('contact_phone', '+1-234-567-8901');
+formData.append('priority', 'high'); // opcional: low, medium, high
+formData.append('source', 'web');    // opcional
+
+// Opcional: Agregar fotos
+if (photoFiles.length > 0) {
+  photoFiles.forEach(file => {
+    formData.append('photos', file);
+  });
+}
+
 const response = await fetch('https://tu-dominio.com/api/public-tickets', {
   method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    title: 'Sistema de punto de venta no responde',
-    description: 'El sistema POS se cuelga cuando intentamos procesar pagos con tarjeta. Necesitamos solución urgente.',
-    company_name: 'Restaurante El Buen Sabor',
-    service_tag_names: ['POS-001', 'TERMINAL-PRINCIPAL'],
-    contact_name: 'María González',
-    contact_email: 'maria.gonzalez@elbuensabor.com',
-    contact_phone: '+1-234-567-8901',
-    priority: 'high', // opcional: low, medium, high
-    source: 'web'     // opcional
-  })
+  body: formData // No necesitas especificar Content-Type, el navegador lo hace automáticamente
 });
 
 const result = await response.json();
@@ -63,19 +70,29 @@ if (result.success) {
 ### jQuery
 
 ```javascript
+// Create form data
+const formData = new FormData();
+formData.append('title', 'Problema con impresora');
+formData.append('description', 'La impresora principal no está funcionando desde esta mañana');
+formData.append('company_name', 'Oficina Central');
+formData.append('service_tag_names[]', 'PRINTER-001');
+formData.append('contact_name', 'Juan Pérez');
+formData.append('contact_email', 'juan.perez@empresa.com');
+formData.append('contact_phone', '+1-555-0123');
+
+// Opcional: Agregar fotos
+if ($('#photos')[0].files.length > 0) {
+  Array.from($('#photos')[0].files).forEach(file => {
+    formData.append('photos', file);
+  });
+}
+
 $.ajax({
   url: 'https://tu-dominio.com/api/public-tickets',
   method: 'POST',
-  contentType: 'application/json',
-  data: JSON.stringify({
-    title: 'Problema con impresora',
-    description: 'La impresora principal no está funcionando desde esta mañana',
-    company_name: 'Oficina Central',
-    service_tag_names: ['PRINTER-001'],
-    contact_name: 'Juan Pérez',
-    contact_email: 'juan.perez@empresa.com',
-    contact_phone: '+1-555-0123'
-  }),
+  processData: false, // Importante: no procesar los datos
+  contentType: false, // Importante: dejar que jQuery establezca el boundary correcto
+  data: formData,
   success: function(result) {
     if (result.success) {
       alert('Ticket enviado exitosamente. ID: ' + result.data.ticket_id);
@@ -94,15 +111,29 @@ $.ajax({
 ```javascript
 import axios from 'axios';
 
+// Create form data
+const formData = new FormData();
+formData.append('title', 'Red lenta en sucursal');
+formData.append('description', 'La conexión a internet está muy lenta, afectando las operaciones');
+formData.append('company_name', 'Sucursal Norte');
+formData.append('service_tag_names[]', 'NETWORK-001');
+formData.append('service_tag_names[]', 'ROUTER-PRINCIPAL');
+formData.append('contact_name', 'Ana López');
+formData.append('contact_email', 'ana.lopez@sucursal.com');
+formData.append('contact_phone', '+1-555-9876');
+
+// Opcional: Agregar fotos
+if (photoFiles.length > 0) {
+  photoFiles.forEach(file => {
+    formData.append('photos', file);
+  });
+}
+
 try {
-  const response = await axios.post('https://tu-dominio.com/api/public-tickets', {
-    title: 'Red lenta en sucursal',
-    description: 'La conexión a internet está muy lenta, afectando las operaciones',
-    company_name: 'Sucursal Norte',
-    service_tag_names: ['NETWORK-001', 'ROUTER-PRINCIPAL'],
-    contact_name: 'Ana López',
-    contact_email: 'ana.lopez@sucursal.com',
-    contact_phone: '+1-555-9876'
+  const response = await axios.post('https://tu-dominio.com/api/public-tickets', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data' // Opcional: Axios lo detecta automáticamente
+    }
   });
 
   if (response.data.success) {
@@ -219,17 +250,29 @@ Access-Control-Max-Age: 86400
 ### Comando cURL
 
 ```bash
+# Sin fotos
 curl -X POST http://localhost:3000/api/public-tickets \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Test ticket via REST API",
-    "description": "Testing the REST API endpoint",
-    "company_name": "Test Company",
-    "service_tag_names": ["TEST-001", "API-TEST"],
-    "contact_name": "Test User",
-    "contact_email": "test@test.com",
-    "contact_phone": "+1-555-0123"
-  }'
+  -F "title=Test ticket via REST API" \
+  -F "description=Testing the REST API endpoint" \
+  -F "company_name=Test Company" \
+  -F "service_tag_names[]=TEST-001" \
+  -F "service_tag_names[]=API-TEST" \
+  -F "contact_name=Test User" \
+  -F "contact_email=test@test.com" \
+  -F "contact_phone=+1-555-0123"
+
+# Con fotos
+curl -X POST http://localhost:3000/api/public-tickets \
+  -F "title=Test ticket via REST API" \
+  -F "description=Testing the REST API endpoint" \
+  -F "company_name=Test Company" \
+  -F "service_tag_names[]=TEST-001" \
+  -F "service_tag_names[]=API-TEST" \
+  -F "contact_name=Test User" \
+  -F "contact_email=test@test.com" \
+  -F "contact_phone=+1-555-0123" \
+  -F "photos=@/path/to/photo1.jpg" \
+  -F "photos=@/path/to/photo2.jpg"
 ```
 
 ### Respuesta de Prueba

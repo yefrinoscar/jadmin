@@ -5,7 +5,8 @@ import { httpBatchLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import { useState } from "react";
 import superjson from "superjson";
-import type { AppRouter } from "@/lib/server";
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { AppRouter } from "@/trpc/api/root";
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -15,8 +16,22 @@ function getBaseUrl() {
   return `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
-export function TRPCProvider({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+export function TRPCProvider({ 
+  children,
+  dehydratedState
+}: { 
+  children: React.ReactNode;
+  dehydratedState?: any;
+}) {
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 5 * 1000, // 5 seconds
+        refetchOnWindowFocus: false,
+      },
+    },
+  }));
+  
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
@@ -31,8 +46,14 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        {children}
+        {dehydratedState ? (
+          <HydrationBoundary state={dehydratedState}>
+            {children}
+          </HydrationBoundary>
+        ) : (
+          children
+        )}
       </QueryClientProvider>
     </trpc.Provider>
   );
-} 
+}
