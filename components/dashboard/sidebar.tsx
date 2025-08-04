@@ -12,14 +12,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createBrowserSupabaseClient } from "@/lib/supabase";
-import { trpc } from "@/components/providers/trpc-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { User } from '@supabase/supabase-js';
 import { toast } from "sonner";
 import { useState } from "react";
 import { useTRPC } from "@/trpc/client"
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { SignOutButton, useUser } from "@clerk/nextjs";
 
 const navigation = [
   { name: "Panel de Control", href: "/dashboard", icon: Home },
@@ -42,45 +40,29 @@ const roleColors: Record<string, string> = {
   client: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
 };
 
+
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const trpc = useTRPC();
   const queryClient = useQueryClient()
+  const { user, isLoaded, isSignedIn } = useUser();
 
-  const { data: user, isLoading: isSessionLoading } = useQuery(trpc.auth.getSession.queryOptions());
+  const userMetadata = user?.publicMetadata;
 
-  const userMetadata = (user as User)?.user_metadata;
   const userRole = userMetadata?.role;
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
-  const handleSignOut = async () => {
-    try {
-      setIsSigningOut(true);
-
-      // Get browser client for auth operations
-      const supabase = createBrowserSupabaseClient();
-
-      // Invalidate all tRPC queries first
-      await queryClient.invalidateQueries();
-      
-      // Sign out from Supabase
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      
-      // Force a router refresh and redirect
-      router.refresh();
-      router.replace("/login");
-    } catch (error) {
-      console.error("Error signing out:", error);
-      toast.dismiss();
-      toast.error("Error al cerrar sesión. Por favor intente de nuevo.");
-      setIsSigningOut(false);
-    }
-  };
-
-  if (isSessionLoading || isSigningOut) {
+  if (!isLoaded || !isSignedIn) {
     return (
       <div className="flex h-screen w-64 items-center justify-center">
         <div className="text-center">
@@ -138,29 +120,28 @@ export function Sidebar() {
         <div className="flex items-center gap-3 mb-4">
           <Avatar className="w-10 h-10">
             <AvatarFallback className="bg-blue-100 text-blue-700">
-              {userMetadata?.name?.[0].toUpperCase() || user?.email?.[0].toUpperCase() || 'U'}
+              {user?.firstName?.[0].toUpperCase() || user?.emailAddresses?.[0].emailAddress?.[0].toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">
-              {userMetadata?.name || 'Usuario'}
+              {user?.firstName || 'Usuario'}
             </p>
             <p className="text-xs text-gray-500 truncate">
-              {user?.email}
+              {user?.emailAddresses?.[0].emailAddress}
             </p>
             <div className="mt-1">
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${userRole && roleColors[userRole] ? roleColors[userRole] : 'bg-blue-50 text-blue-700'}`}>
-                {userRole ? roleLabels[userRole] : 'Usuario'}
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${userRole && roleLabels[`${userRole}`] ? roleLabels[`${userRole}`] : 'bg-blue-50 text-blue-700'}`}>
+                {userRole ? roleLabels[`${userRole}`] : 'Usuario'}
               </span>
             </div>
           </div>
         </div>
         
-        <div>
+        <SignOutButton redirectUrl="/login">
           <Button 
             variant="ghost" 
             className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-            onClick={handleSignOut}
             disabled={isSigningOut}
           >
             <LogOut className="w-4 h-4" />
@@ -173,7 +154,7 @@ export function Sidebar() {
               "Sign Out"
             )}
           </Button>
-        </div>
+        </SignOutButton>
       </div>
     </div>
   );

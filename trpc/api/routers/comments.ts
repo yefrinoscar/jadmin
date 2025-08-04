@@ -64,13 +64,11 @@ export const commentsRouter = createTRPCRouter({
   add: protectedProcedure
     .input(AddCommentSchema)
     .mutation(async ({ ctx, input }) => {
-      // Get the current user's ID
-      const userId = ctx.user.id;
       
       // Call the database function to add a comment
       const { data, error } = await ctx.supabase.rpc('add_ticket_comment', {
         p_ticket_id: input.ticket_id,
-        p_user_id: userId,
+        p_user_id: ctx.auth.userId,
         p_content: input.content,
         p_photo_urls: input.photo_urls || null
       });
@@ -88,13 +86,11 @@ export const commentsRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(DeleteCommentSchema)
     .mutation(async ({ ctx, input }) => {
-      // Get the current user's ID
-      const userId = ctx.user.id;
       
       // Call the database function to delete a comment
       const { data, error } = await ctx.supabase.rpc('delete_ticket_comment', {
         p_comment_id: input.comment_id,
-        p_user_id: userId
+        p_user_id: ctx.auth.userId
       });
 
       if (error) throw new TRPCError({

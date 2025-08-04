@@ -1,471 +1,498 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../../init';
+import { EmailService } from '../../../lib/services/email-service';
 import {
-  CreateUserInputSchema,
   UpdateUserInputSchema,
   IdParamSchema,
   SuccessResponseSchema,
+  UserRoleSchema,
+  ClerkUserSchema,
+  ClerkUser,
 } from '@/lib/schemas';
-import { createAdminClient } from '@/lib/utils/supabase-client';
-import { User } from '@supabase/supabase-js';
-
-// Helper function to check user role from database to avoid RLS recursion
-async function checkUserRole(ctx: any, allowedRoles: string[]) {
-  // This initial query is necessary to avoid RLS recursion
-  const { data: currentUser, error: userError } = await ctx.supabase
-    .from('users')
-    .select('role')
-    .eq('id', ctx.user.id)
-    .single();
-  
-  if (userError || !currentUser || !allowedRoles.includes(currentUser.role)) {
-    throw new TRPCError({ 
-      code: 'FORBIDDEN', 
-      message: `Access requires one of these roles: ${allowedRoles.join(', ')}` 
-    });
-  }
-  return currentUser.role;
-}
+import { clerkClient } from '@/lib/utils/clerk-backend';
 
 export const usersRouter = createTRPCRouter({
-  // Get current user information including role
-  getCurrentUser: protectedProcedure.query(async ({ ctx }) => {
-    const { data: currentUser, error } = await ctx.supabase
-      .from('users')
-      .select('*')
-      .eq('id', ctx.user.id)
-      .single();
-    
-    if (error) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'No se pudo obtener la información del usuario actual'
-      });
+  getCurrentUser: protectedProcedure.output(ClerkUserSchema).query(async ({ ctx }) => {
+    // Return the user as ClerkUserWithMetadata to ensure proper typing
+    const user: ClerkUser = {
+      id: ctx.user?.id || '',
+      publicMetadata: ctx.user?.publicMetadata || {},
+      privateMetadata: ctx.user?.privateMetadata || {},
+      unsafeMetadata: ctx.user?.unsafeMetadata || {}, 
+      lastActiveAt: ctx.user?.lastActiveAt || 0,
+      createOrganizationEnabled: ctx.user?.createOrganizationEnabled || false,
+      createOrganizationsLimit: ctx.user?.createOrganizationsLimit || 0,
+      deleteSelfEnabled: ctx.user?.deleteSelfEnabled || false,
+      legalAcceptedAt: ctx.user?.legalAcceptedAt || 0,
+      passwordEnabled: ctx.user?.passwordEnabled || false,
+      totpEnabled: ctx.user?.totpEnabled || false,
+      backupCodeEnabled: ctx.user?.backupCodeEnabled || false,
+      twoFactorEnabled: ctx.user?.twoFactorEnabled || false,
+      banned: ctx.user?.banned || false,
+      locked: ctx.user?.locked || false,
+      createdAt: ctx.user?.createdAt || 0,
+      updatedAt: ctx.user?.updatedAt || 0,
+      imageUrl: ctx.user?.imageUrl || '',
+      hasImage: ctx.user?.hasImage || false,
+      primaryEmailAddressId: ctx.user?.primaryEmailAddressId || '',
+      primaryPhoneNumberId: ctx.user?.primaryPhoneNumberId || '',
+      primaryWeb3WalletId: ctx.user?.primaryWeb3WalletId || '',
+      lastSignInAt: ctx.user?.lastSignInAt || 0,
+      externalId: ctx.user?.externalId || '',
+      username: ctx.user?.username || '',
+      firstName: ctx.user?.firstName || '',
+      lastName: ctx.user?.lastName || '',
     }
-    
-    return currentUser;
+    return user as ClerkUser;
   }),
 
-  // Get all users
   getAll: protectedProcedure.query(async ({ ctx }) => {
-    // Check if user has admin or technician role
+    const role = ctx.user?.publicMetadata.role as string;
+
+    if (!['superadmin', 'admin', 'technician'].includes(role)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to view all users.',
+      });
+    }
+
     const { data, error } = await ctx.supabase
       .from('users')
-      .select('*')
+      .select('*, clients:client_id (id, name, company_name)')
       .order('created_at', { ascending: false });
-    
-    if (error) throw error;
+
+    if (error) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+    }
     return data;
   }),
 
   create: protectedProcedure
-  .input(CreateUserInputSchema)
-  .mutation(async ({ ctx, input }) => {
-    // Check if user has admin role
-    const userRole = await checkUserRole(ctx, ['superadmin', 'admin']);
-    
-    // Only superadmin can create superadmin users
-    if (userRole !== 'superadmin' && input.role === 'superadmin') {
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'Solo un superadmin puede crear usuarios con rol de superadmin'
-      });
-    }
-    
-    // Create a Supabase admin client for privileged operations
-    const supabaseAdmin = await createAdminClient();
-    try {
-      // Create the user in Supabase Auth using admin client
-      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: input.email,
-        password: input.password,
-        
-        user_metadata: {
-          name: input.name,
-          role: input.role,
-          is_disabled: false, // Add is_disabled field to user metadata
-          display_name: input.name,
-          // Include client_id in metadata if role is client and client_id is provided
-          ...(input.role === 'client' && input.client_id ? { client_id: input.client_id } : {})
-        },
-        email_confirm: true
-      });
-
-      if (authError) {
+    .input(
+      z
+        .object({
+          email: z.string().email('Please enter a valid email address'),
+          name: z.string().min(1, 'Name is required'),
+          role: UserRoleSchema,
+          password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+          client_id: z.string().uuid('Please select a valid client').optional()
+        })
+        .refine(
+          (data) => {
+            if (data.role === 'client') {
+              return !!data.client_id;
+            }
+            return true;
+          },
+          {
+            message: "Client selection is required for users with 'client' role",
+            path: ['client_id'],
+          }
+        )
+    )
+    .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin'].includes(role)) {
         throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Error al registrar usuario: ${authError.message}`
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to create users.',
         });
       }
-      
-      // Extract the user ID from the response safely
-      const authUserAny = authUser as any;
-      const userId = authUserAny?.user?.id || authUserAny?.id;
 
-      // Create the user in the users table
-      const userData = {
-        id: userId, // Use the auth user ID as the primary key
-        email: input.email,
-        name: input.name,
-        role: input.role,
-        is_disabled: false, // Add is_disabled field to database record
-        // Add client_id if role is client and client_id is provided
-        ...(input.role === 'client' && input.client_id ? { client_id: input.client_id } : {})
-      };
+      if (role !== 'superadmin' && input.role === 'superadmin') {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only a superadmin can create superadmin users.',
+        });
+      }
+
       
-      const { data, error } = await supabaseAdmin
+      try {
+        let clientId = input.client_id;
+
+        if (input.role === 'client') {
+
+          const { data: newClient, error: clientError } = await ctx.supabase
+            .from('clients')
+            .insert([
+              {
+                name: input.name,
+                email: input.email,
+              },
+            ])
+            .select()
+            .single();
+
+          if (clientError) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Error creating client: ${clientError.message}`,
+            });
+          }
+          clientId = newClient?.id;
+        }
+
+        const response = await clerkClient.users.createUser({
+          emailAddress: [input.email],
+          password: input.password,
+          publicMetadata: {
+            role: input.role,
+            is_disabled: false,
+            ...(input.role === 'client' && clientId ? { client_id: clientId } : {}),
+          }
+        })  
+
+        if (!response.id) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Error registering user`,
+          });
+        }
+
+        const userId = response.id;
+
+        const userData = {
+          id: userId,
+          email: input.email,
+          name: input.name,
+          role: input.role,
+          is_disabled: false,
+          ...(input.role === 'client' && clientId ? { client_id: clientId } : {}),
+        };
+
+        const { data, error } = await ctx.supabase.from('users').insert([userData]).select().single();
+
+        if (error) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Error creating user in database: ${error.message}`,
+          });
+        }
+
+        console.log('User created successfully:', data, input.password);
+
+        // Send welcome email with login credentials if password was provided
+        if (input.password) {
+          const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const companyName = process.env.COMPANY_NAME || 'JAdmin';
+          
+          console.log('Sending email to', input.email, 'with login URL', loginUrl, 'and company name', companyName);
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
+
+          // Call the email API endpoint asynchronously to not block the response
+          fetch(`${baseUrl}/api/email-access`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: input.email,
+              password: input.password,
+              loginUrl: `${loginUrl}/login`,
+              companyName
+            }),
+          }).then(async (response) => {
+            console.log('response', response);
+            
+            if (!response.ok) {
+              const errorData = await response.json();
+              console.error('Failed to send user access email:', errorData.error);
+            }
+          }).catch(error => {
+            console.error('Error calling email API:', error);
+          });
+        }
+        
+        return { success: true, user: data };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'An unknown error occurred',
+        });
+      }
+    }),
+
+  update: protectedProcedure.input(UpdateUserInputSchema).mutation(async ({ ctx, input }) => {
+    const role = ctx.user?.publicMetadata.role as string;
+    if (!['superadmin', 'admin'].includes(role)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to update users.',
+      });
+    }
+
+    try {
+
+      const { data: targetUser, error: targetUserError } = await ctx.supabase
         .from('users')
-        .insert([userData])
+        .select('role')
+        .eq('id', input.id)
+        .single();
+
+      if (targetUserError) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Error fetching user info: ${targetUserError.message}`,
+        });
+      }
+
+      if (!targetUser) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+      }
+
+      if (role !== 'superadmin' && targetUser.role === 'superadmin') {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to modify superadmin users.',
+        });
+      }
+
+      if (input.role && input.role !== targetUser.role) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'User role cannot be changed after creation.',
+        });
+      }
+
+      if (role !== 'superadmin' && input.role === 'superadmin') {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only a superadmin can assign the superadmin role.',
+        });
+      }
+
+      const user = await clerkClient.users.getUser(
+        input.id
+      );
+
+      if (!user) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Error fetching user info`,
+        });
+      }
+
+      const currentMetadata = user.publicMetadata || {};
+
+      const updateUser = await clerkClient.users.updateUser(input.id, {
+        publicMetadata: {
+          ...currentMetadata,
+          display_name: input.name,
+        },
+      });
+
+      if (!updateUser) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Error updating user in authentication`,
+        });
+      }
+
+      const { id, ...updateData } = input;
+      const { data, error: dbError } = await ctx.supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', id)
         .select()
         .single();
 
-      if (error) {
-        console.error('Error al crear usuario en la base de datos:', error);
+      if (dbError) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: `Error al crear usuario en la base de datos: ${error.message}`
+          code: 'BAD_REQUEST',
+          message: `Error updating user in database: ${dbError.message}`,
         });
       }
 
-      return {
-        success: true,
-        user: data
-      };
+      return data;
     } catch (error) {
       if (error instanceof TRPCError) throw error;
-      
+
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
-        message: error instanceof Error ? error.message : 'Ocurrió un error desconocido'
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
       });
     }
   }),
 
+  delete: protectedProcedure.input(IdParamSchema).mutation(async ({ ctx, input }) => {
+    const role = ctx.user?.publicMetadata.role as string;
+    if (!['superadmin', 'admin'].includes(role)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to delete users.',
+      });
+    }
 
-  update: protectedProcedure
-    .input(UpdateUserInputSchema)
-    .mutation(async ({ ctx, input }) => {
-      // Check if user has admin role
-      const userRole = await checkUserRole(ctx, ['superadmin', 'admin']);
+    try {
+      const { data: targetUser, error: targetUserError } = await ctx.supabase
+        .from('users')
+        .select('role')
+        .eq('id', input.id)
+        .single();
 
-      try {
-        // Create a Supabase admin client for privileged operations
-        const supabaseAdmin = await createAdminClient();
-        
-        // Get the target user's role to check permissions
-        const { data: targetUser, error: targetUserError } = await supabaseAdmin
-          .from('users')
-          .select('role')
-          .eq('id', input.id)
-          .single();
-          
-        if (targetUserError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al obtener información del usuario: ${targetUserError.message}`
-          });
-        }
-        
-        // Admin users cannot modify superadmin users
-        if (userRole !== 'superadmin' && targetUser.role === 'superadmin') {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'No tienes permisos para modificar usuarios con rol de superadmin'
-          });
-        }
-        
-        // Prevent changing the role after user creation
-        if (input.role && input.role !== targetUser.role) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'No se puede cambiar el rol después de crear un usuario'
-          });
-        }
-        
-        // Admin users cannot promote users to superadmin
-        if (userRole !== 'superadmin' && input.role === 'superadmin') {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'Solo un superadmin puede asignar el rol de superadmin'
-          });
-        }
-        
-        // Get current user metadata
-        const { data: userData, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(input.id);
-        
-        if (getUserError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al obtener información del usuario: ${getUserError.message}`
-          });
-        }
-        
-        const currentMetadata = userData?.user?.user_metadata || {};
-        
-        // Update Supabase Auth metadata
-        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
-          input.id,
-          { 
-            user_metadata: {
-              ...currentMetadata,
-              // Keep the existing role, don't update it
-              display_name: input.name
-            }
-          }
-        );
-
-        if (authError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al actualizar usuario en autenticación: ${authError.message}`
-          });
-        }
-        
-        // Update user in database
-        const { id, ...updateData } = input;
-        const { data, error: dbError } = await supabaseAdmin
-          .from('users')
-          .update(updateData)
-          .eq('id', id)
-          .select()
-          .single();
-
-        if (dbError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al actualizar usuario en la base de datos: ${dbError.message}`
-          });
-        }
-
-        return data;
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        
+      if (targetUserError) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'An unknown error occurred'
+          code: 'BAD_REQUEST',
+          message: `Error fetching user info: ${targetUserError.message}`,
         });
       }
-    }),
 
-  delete: protectedProcedure
-    .input(IdParamSchema)
-    .mutation(async ({ ctx, input }) => {
-      // Check if user has admin role
-      await checkUserRole(ctx, ['superadmin', 'admin']);
+      if (!targetUser) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+      }
 
-      const { error } = await ctx.supabase
-        .from('users')
-        .delete()
-        .eq('id', input.id);
+      if (role !== 'superadmin' && targetUser.role === 'superadmin') {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to delete superadmin users.',
+        });
+      }
 
-      if (error) throw error;
+      const { count, error: countError } = await ctx.supabase
+        .from('tickets')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigned_to', input.id);
+
+      if (countError) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Error checking for assigned tickets: ${countError.message}`,
+        });
+      }
+
+      if (count && count > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot delete user with assigned tickets. Please reassign them first.',
+        });
+      }
+
+      const deleteUser = await clerkClient.users.deleteUser(input.id);
+
+      if (!deleteUser) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Error deleting user from authentication`,
+        });
+      }
+
+      const { error: dbError } = await ctx.supabase.from('users').delete().eq('id', input.id);
+
+      if (dbError) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Error deleting user from database: ${dbError.message}`,
+        });
+      }
+
       return SuccessResponseSchema.parse({ success: true });
-    }),
+    } catch (error) {
+      if (error instanceof TRPCError) throw error;
+
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: error instanceof Error ? error.message : 'An unknown error occurred',
+      });
+    }
+  }),
 
   getAssignableUsers: protectedProcedure.query(async ({ ctx }) => {
-    // Get users who can be assigned tickets (technicians and admins)
     const { data, error } = await ctx.supabase
       .from('users')
       .select('id, name, email, role')
       .in('role', ['admin', 'technician'])
       .order('name', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+    }
     return data;
   }),
 
   toggleUserStatus: protectedProcedure
-    .input(z.object({
-      id: z.string().uuid(),
-      isDisabled: z.boolean()
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+        isDisabled: z.boolean(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      // Check if user has admin role
-      const userRole = await checkUserRole(ctx, ['superadmin', 'admin']);
-      
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to modify user status.',
+        });
+      }
+
       try {
-        // Use the admin client to update user status
-        const supabaseAdmin = await createAdminClient();
-        
-        // Get the target user's role to check permissions
-        const { data: targetUser, error: targetUserError } = await supabaseAdmin
+        const { data: targetUser, error: targetUserError } = await ctx.supabase
           .from('users')
           .select('role')
           .eq('id', input.id)
           .single();
-          
+
         if (targetUserError) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error al obtener información del usuario: ${targetUserError.message}`
+            message: `Error fetching user info: ${targetUserError.message}`,
           });
         }
-        
-        // Admin users cannot modify superadmin users
-        if (userRole !== 'superadmin' && targetUser.role === 'superadmin') {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'No tienes permisos para modificar usuarios con rol de superadmin'
-          });
+
+        if (!targetUser) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
         }
-        
-        // Update user in Supabase Auth - both ban_duration and user_metadata
-        const { data: userData, error: getUserError } = await supabaseAdmin.auth.admin.getUserById(input.id);
-        
-        if (getUserError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al obtener información del usuario: ${getUserError.message}`
-          });
-        }
-        
-        // Get current user metadata
-        const currentMetadata = userData?.user?.user_metadata || {};
-        
-        // Update user with both ban_duration and updated metadata
-        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
-          input.id,
-          { 
-            ban_duration: input.isDisabled ? '87600h' : undefined, // ~10 years if disabling, undefined to enable
-            user_metadata: {
-              ...currentMetadata,
-              is_disabled: input.isDisabled
-            }
-          }
+
+        const authUserData = await clerkClient.users.getUser(
+          input.id
         );
 
-        if (authError) {
+        if (!authUserData) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error al ${input.isDisabled ? 'desactivar' : 'activar'} usuario: ${authError.message}`
+            message: `Error fetching user info`,
           });
         }
 
-        // Also update the is_disabled field in our database to track the disabled status
-        const { data, error: dbError } = await supabaseAdmin
+        const currentMetadata = authUserData.publicMetadata || {};
+
+        const updateUser = await clerkClient.users.updateUser(input.id, {
+          publicMetadata: { ...currentMetadata, is_disabled: input.isDisabled },
+        });
+
+        console.log(updateUser);
+        
+
+        if (!updateUser) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Error ${input.isDisabled ? 'disabling' : 'enabling'} user`,
+          });
+        }
+
+        const { data, error: dbError } = await ctx.supabase
           .from('users')
           .update({ is_disabled: input.isDisabled })
           .eq('id', input.id)
-          .select()
-          .single();
+          .select();
 
         if (dbError) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error al actualizar estado en la base de datos: ${dbError.message}`
+            message: `Error updating user status in database: ${dbError.message}`,
           });
         }
 
         return data;
       } catch (error) {
         if (error instanceof TRPCError) throw error;
-        
+
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'An unknown error occurred'
-        });
-      }
-    }),
-
-  deleteUser: protectedProcedure
-    .input(z.object({
-      id: z.string().uuid()
-    }))
-    .mutation(async ({ ctx, input }) => {
-      // Check if user has admin role
-      const userRole = await checkUserRole(ctx, ['superadmin', 'admin']);
-      
-      try {
-        const supabaseAdmin = await createAdminClient();
-        
-        // Get the target user's role to check permissions
-        const { data: targetUser, error: targetUserError } = await supabaseAdmin
-          .from('users')
-          .select('role')
-          .eq('id', input.id)
-          .single();
-          
-        if (targetUserError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al obtener información del usuario: ${targetUserError.message}`
-          });
-        }
-        
-        // Admin users cannot delete superadmin users
-        if (userRole !== 'superadmin' && targetUser.role === 'superadmin') {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'No tienes permisos para eliminar usuarios con rol de superadmin'
-          });
-        }
-        console.log(input);
-        
-        // First, check if the user has any assigned tickets
-        const { count, error: countError } = await ctx.supabase
-          .from('tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('assigned_to', input.id);
-
-          console.log(count, countError);
-        
-        if (countError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al verificar tickets asignados: ${countError.message}`
-          });
-        }
-        
-        // If user has tickets, don't allow deletion
-        if (count && count > 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'No se puede eliminar un usuario con tickets asignados'
-          });
-        }
-        
-        // Delete user from Supabase Auth
-        const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(input.id);
-        
-        if (authError) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Error al eliminar usuario de autenticación: ${authError.message}`
-          });
-        }
-        
-        // The database record should be deleted automatically via cascade delete
-        // but we can verify it was deleted
-        const { data: checkUser } = await supabaseAdmin
-          .from('users')
-          .select('id')
-          .eq('id', input.id)
-          .single();
-          
-        if (checkUser) {
-          // If the user still exists in the database, delete it manually
-          const { error: dbError } = await supabaseAdmin
-            .from('users')
-            .delete()
-            .eq('id', input.id);
-            
-          if (dbError) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Error al eliminar usuario de la base de datos: ${dbError.message}`
-            });
-          }
-        }
-        
-        return { success: true, message: 'Usuario eliminado correctamente' };
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'An unknown error occurred'
+          message: error instanceof Error ? error.message : 'An unknown error occurred',
         });
       }
     }),

@@ -1,21 +1,25 @@
 "use client";
 
 import { useTRPC } from "@/trpc/client";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { UsersTable } from "./users-table";
 import { useCallback } from "react";
+import { useUser } from "@clerk/nextjs";
+import { ClerkUser } from "@/lib/schemas";
 
 export function UsersContent() {
   const trpc = useTRPC();
+  
   // With useSuspenseQuery, the data is returned directly
-  const { data: users, refetch } = useSuspenseQuery(trpc.users.getAll.queryOptions());
+  const { data: users, refetch } = useQuery(trpc.users.getAll.queryOptions());
+
+  const { data: user } = useQuery(trpc.users.getCurrentUser.queryOptions());
   
   // Get current user information including role
-  const { data: currentUser } = useSuspenseQuery(trpc.users.getCurrentUser.queryOptions());
-  // Type assertion for currentUser
-  type UserWithRole = { role: string };
-  const typedCurrentUser = currentUser as UserWithRole;
-  
+  // Cast the user to our ClerkUserWithMetadata type to ensure publicMetadata is properly typed
+  const clerkUser = user as ClerkUser;
+  const typedCurrentUser = { role: clerkUser?.publicMetadata?.role as string || 'client' };
+
   const handleUserCreated = useCallback(() => {
     // Invalidate the users query
     refetch()
@@ -30,7 +34,7 @@ export function UsersContent() {
     <div className="space-y-4 pt-6">
       
       <UsersTable 
-        data={users} 
+        data={users || []} 
         currentUserRole={typedCurrentUser.role}
         onUserCreated={handleUserCreated}
         onUserUpdated={handleUserUpdated}

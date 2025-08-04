@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSignIn, useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Eye, EyeOff } from "lucide-react";
-import { createBrowserClient } from "@supabase/ssr";
-import { Database } from "@/lib/database.types";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,31 +18,42 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { isLoaded, signIn } = useSignIn();
+  const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
   
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  // Redirigir al dashboard si el usuario ya tiene sesión iniciada
+  useEffect(() => {
+    if (isAuthLoaded && isSignedIn) {
+      // Use hard navigation for more reliable redirection
+      window.location.href = "/dashboard";
+    }
+  }, [isAuthLoaded, isSignedIn]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoaded) return;
+
     setLoading(true);
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
+      // Start the sign-in process using email
+      const result = await signIn.create({
+        identifier: email,
         password,
       });
 
-      if (error) {
-        setError(error.message);
+      if (result.status === "complete") {
+        // Redirect to dashboard on successful sign-in using hard navigation
+        window.location.href = "/dashboard";
       } else {
-        router.push("/dashboard");
-        router.refresh();
+        // Handle other sign-in statuses if needed
+        console.log("Sign-in status:", result.status);
+        setError("Error al iniciar sesión. Por favor, intenta de nuevo.");
       }
-    } catch (err) {
-      setError("Ocurrió un error inesperado");
+    } catch (err: any) {
+      console.error("Sign-in error:", err);
+      setError(err.errors?.[0]?.message || "Ocurrió un error inesperado");
     } finally {
       setLoading(false);
     }
@@ -100,8 +110,8 @@ export default function LoginPage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    size="icon"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
@@ -114,7 +124,11 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || !isLoaded}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -126,17 +140,17 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm">
+            {/* <div className="mt-6 text-center text-sm">
               <p className="text-gray-600">
                 ¿No tienes una cuenta?{" "}
                 <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
                   Registrarse
                 </Link>
               </p>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
       </div>
     </div>
   );
-} 
+}

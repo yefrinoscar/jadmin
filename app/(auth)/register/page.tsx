@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSignUp } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,11 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Eye, EyeOff } from "lucide-react";
-import { createBrowserClient } from "@supabase/ssr";
-import { Database } from "@/lib/database.types";
 
 export default function RegisterPage() {
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,14 +22,12 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
-  
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const { isLoaded, signUp } = useSignUp();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoaded) return;
+
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -41,44 +39,31 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres");
+    if (password.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres");
       setLoading(false);
       return;
     }
 
     try {
-      // Llamar al endpoint de registro usando fetch directamente
-      const response = await fetch('/api/trpc/auth.register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          json: {
-            email,
-            password,
-            name,
-            // Por defecto, los usuarios registrados tendrán rol de cliente
-            role: 'client'
-          }
-        }),
+      // Start the sign-up process
+      const result = await signUp.create({
+        emailAddress: email,
+        password,
+        firstName,
+        lastName,
       });
 
-      const result = await response.json();
-
-      if (result.error) {
-        setError(result.error.message || "Error al registrar usuario");
-      } else {
-        setSuccess(true);
-        // Esperar 2 segundos y luego redirigir al login
-        setTimeout(() => {
-          router.push("/login");
-        }, 2000);
-      }
-    } catch (err) {
-      setError("Ocurrió un error inesperado");
-      console.error(err);
+      // Wait for the user to verify their email
+      await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+      
+      setSuccess(true);
+      
+      // Redirect to verification page
+      router.push("/verify");
+    } catch (err: any) {
+      console.error("Sign-up error:", err);
+      setError(err.errors?.[0]?.message || "Ocurrió un error inesperado");
     } finally {
       setLoading(false);
     }
@@ -110,22 +95,37 @@ export default function RegisterPage() {
               {success && (
                 <Alert className="bg-green-50 border-green-500 text-green-700">
                   <AlertDescription>
-                    Registro exitoso. Serás redirigido a la página de inicio de sesión...
+                    Registro exitoso. Por favor verifica tu correo electrónico.
                   </AlertDescription>
                 </Alert>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="name">Nombre completo</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="Ingresa tu nombre completo"
-                  disabled={loading || success}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">Nombre</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                    placeholder="Nombre"
+                    disabled={loading || success}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Apellido</Label>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    required
+                    placeholder="Apellido"
+                    disabled={loading || success}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -156,8 +156,8 @@ export default function RegisterPage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    size="icon"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading || success}
                   >
@@ -183,7 +183,7 @@ export default function RegisterPage() {
                 />
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading || success}>
+              <Button type="submit" className="w-full" disabled={loading || success || !isLoaded}>
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

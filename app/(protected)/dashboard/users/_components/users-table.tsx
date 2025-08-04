@@ -268,15 +268,13 @@ export function UsersTable({ data, currentUserRole, onUserCreated, onUserUpdated
                 {table.getHeaderGroups().map((headerGroup: any) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header: any, index: number) => {
-                      const isPinnedColumn = index === 0 || index === 1; // checkbox and name
+                      const isPinnedColumn = index === 0; // only name column is fixed
                       return (
                         <TableHead 
                           key={header.id} 
                           className={cn(
                             "text-xs font-medium whitespace-nowrap transition-shadow duration-200",
-                            isPinnedColumn && "sticky z-30 bg-muted",
-                            index === 0 && "left-0",
-                            index === 1 && "left-[50px]",
+                            isPinnedColumn && "sticky z-30 bg-muted left-0",
                             isPinnedColumn && showPinnedShadow && "shadow-[2px_0_8px_rgba(0,0,0,0.15)]"
                           )}
                         >
@@ -302,15 +300,13 @@ export function UsersTable({ data, currentUserRole, onUserCreated, onUserUpdated
                       onClick={(event) => handleRowClick(row.original, event)}
                     >
                       {row.getVisibleCells().map((cell: any, index: number) => {
-                        const isPinnedColumn = index === 0 || index === 1; // checkbox and name
+                        const isPinnedColumn = index === 0; // only name column is fixed
                         return (
                           <TableCell 
                             key={cell.id} 
                             className={cn(
                               "text-sm whitespace-nowrap transition-shadow duration-200",
-                              isPinnedColumn && "sticky z-10 bg-background",
-                              index === 0 && "left-0",
-                              index === 1 && "left-[50px]",
+                              isPinnedColumn && "sticky z-10 bg-background left-0",
                               isPinnedColumn && showPinnedShadow && "shadow-[2px_0_8px_rgba(0,0,0,0.15)]"
                             )}
                           >

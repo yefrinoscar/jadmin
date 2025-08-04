@@ -5,8 +5,8 @@ import { httpBatchLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import { useState } from "react";
 import superjson from "superjson";
-import type { AppRouter } from "@/lib/server";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { AppRouter } from "@/trpc/api/root";
 
 export const trpc = createTRPCReact<AppRouter>();
 

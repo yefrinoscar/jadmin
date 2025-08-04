@@ -1,5 +1,5 @@
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Copy, Mail, Calendar, User as UserIcon, Shield, ShieldCheck, UserCheck } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Copy, Mail, Calendar, User as UserIcon, Shield, ShieldCheck, UserCheck, Building } from "lucide-react"
 import { format } from "date-fns"
 import { useState } from "react"
 import { useTRPC } from "@/trpc/client"
@@ -68,6 +68,11 @@ export type UserWithCount = User & {
   assigned_tickets_count?: number
   last_sign_in_at?: string
   is_disabled?: boolean
+  clients?: {
+    id: string
+    name: string
+    company_name?: string
+  } | null
 }
 
 // Define the column meta type to include onUserUpdated and currentUserRole
@@ -95,34 +100,6 @@ const StatusBadge = ({ isDisabled }: { isDisabled?: boolean }) => {
 
 export const userColumns: ColumnDef<UserWithCount>[] = [
   {
-    id: "select",
-    header: ({ table }) => (
-      <div className="w-[50px] flex justify-center">
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-        />
-      </div>
-    ),
-    cell: ({ row }) => (
-      <div className="w-[50px] flex justify-center">
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-          onClick={(e) => e.stopPropagation()}
-        />
-      </div>
-    ),
-    enableSorting: false,
-    enableHiding: false,
-    size: 50,
-  },
-  {
     accessorKey: "name",
     header: ({ column }) => {
       return (
@@ -149,9 +126,9 @@ export const userColumns: ColumnDef<UserWithCount>[] = [
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="font-medium text-sm truncate">{user.name}</p>
-            <p className="text-xs text-muted-foreground">
+            {/* <p className="text-xs text-muted-foreground">
               {user.assigned_tickets_count || 0} tickets asignados
-            </p>
+            </p> */}
           </div>
         </div>
       )
@@ -185,7 +162,7 @@ export const userColumns: ColumnDef<UserWithCount>[] = [
       }
       
       return (
-        <div className="group flex items-center gap-2 w-[200px]" title={email}>
+        <div className="group flex items-center gap-2 w-[220px]" title={email}>
           <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm truncate">{email}</span>
           <Button
@@ -207,7 +184,7 @@ export const userColumns: ColumnDef<UserWithCount>[] = [
     cell: ({ row }) => {
       const user = row.original
       return (
-        <div className="w-[100px]">
+        <div className="w-[80px]">
           <StatusBadge isDisabled={user.is_disabled} />
         </div>
       )
@@ -222,13 +199,20 @@ export const userColumns: ColumnDef<UserWithCount>[] = [
     cell: ({ row }) => {
       const role = row.getValue("role") as string
       const RoleIcon = roleIcons[role] || UserIcon
-      
+      const client = row.original?.clients
       return (
-        <div className="w-[120px]">
+        <div className="w-[300px] space-x-1">
           <Badge className={`${roleColors[role]} text-xs`}>
             <RoleIcon className="w-3 h-3 mr-1" />
             {roleLabels[role] || role}
           </Badge>
+
+          {client && (
+            <Badge className={`bg-muted text-xs text-muted-foreground`}>
+              <Building className="w-3 h-3 mr-1" />
+              {client?.company_name || client?.name}
+            </Badge>
+          )}
         </div>
       )
     },
@@ -259,28 +243,6 @@ export const userColumns: ColumnDef<UserWithCount>[] = [
           <span className="text-sm">
             {format(new Date(date), "MMM dd, yyyy")}
           </span>
-        </div>
-      )
-    },
-  },
-  {
-    id: "last_activity",
-    header: "Última Actividad",
-    cell: ({ row }) => {
-      const user = row.original
-      const lastActivity = user.last_sign_in_at
-      
-      return (
-        <div className="w-[140px]">
-          {lastActivity ? (
-            <span className="text-sm text-muted-foreground">
-              {format(new Date(lastActivity), "MMM dd, HH:mm")}
-            </span>
-          ) : (
-            <span className="text-sm text-muted-foreground italic">
-              Nunca
-            </span>
-          )}
         </div>
       )
     },
@@ -325,7 +287,7 @@ export const userColumns: ColumnDef<UserWithCount>[] = [
       const toggleStatusMutation = useMutation(toggleStatusOptions)
       
       // Set up the delete user mutation
-      const deleteUserOptions = trpc.users.deleteUser.mutationOptions({
+      const deleteUserOptions = trpc.users.delete.mutationOptions({
         onSuccess: () => {
           // Close the delete dialog
           setIsDeleteDialogOpen(false);

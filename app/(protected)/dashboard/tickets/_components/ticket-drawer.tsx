@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { useTRPC } from "@/trpc/client"
+import { makeQueryClient } from "@/trpc/query-client"
 
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -25,8 +26,11 @@ interface TicketDrawerProps {
 }
 
 interface SerialNumberInput {
-  serial_number: string
-  model: string
+  id: string
+  tag: string
+  description: string
+  hardware_type: string
+  location: string
 }
 
 interface Comment {
@@ -63,6 +67,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   })
   const [isUpdatingTicket, setIsUpdatingTicket] = useState(false)
   const [newSerialNumber, setNewSerialNumber] = useState({
+    id: '',
     tag: '',
     description: '',
     hardware_type: '',
@@ -72,6 +77,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   const [isSubmittingSerialNumber, setIsSubmittingSerialNumber] = useState(false)
 
   const trpc = useTRPC()
+  const queryClient = makeQueryClient()
   
   console.log("ticket", ticket)
   // Fetch ticket updates/comments
@@ -79,7 +85,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   // const { data: ticketWithUpdates, refetch } = useQuery({ ...queryOptions({ clientId: ticket?.id || '' }), enabled: !!ticket?.id })
 
   const { data: ticketWithComments } = useQuery({ ...trpc.comments.getByTicketId.queryOptions({ ticket_id: ticket?.id || '' }), enabled: !!ticket?.id })
-  const { data: serialNumbers } = useQuery({ ...trpc.serviceTags.getByClientId.queryOptions({ clientId: ticket?.client_id || '' }), enabled: !!ticket?.id })
+  const { data: serialNumbers } = useQuery({ ...trpc.serviceTags.getByTicketId.queryOptions({ ticketId: ticket?.id || '' }), enabled: !!ticket?.id })
 
   // Fetch users for dropdown
   const { data: users } = useQuery(trpc.users.getAll.queryOptions())
@@ -154,20 +160,57 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
     }
   }
   
+  // Mutation for adding a service tag to a ticket
+  const { mutateAsync: addServiceTag } = useMutation(trpc.tickets.addServiceTag.mutationOptions({
+    onSuccess: () => {
+      toast.success('Número de serie añadido exitosamente')
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", "all"],
+      })
+      if (ticket?.id) {
+        queryClient.invalidateQueries({
+          queryKey: ["tickets", "byId", ticket.id],
+        })
+        queryClient.invalidateQueries({
+          queryKey: ["serviceTags", "byTicketId", ticket.id],
+        })
+      }
+    },
+    onError: (error) => {
+      toast.error(`Error al añadir número de serie: ${error.message}`)
+    }
+  }))
+  
   // Handle adding serial number
   const handleAddSerialNumber = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!ticket?.id || !newSerialNumber.tag.trim()) return
+    if (!ticket) return
     
     try {
       setIsSubmittingSerialNumber(true)
-      // await addSerialNumber({
-      //   id: ticket.id,
-      //   serial_number: {
-      //     serial_number: newSerialNumber.serial_number.trim(),
-      //     model: newSerialNumber.model.trim()
-      //   }
-      // })
+      
+      // If we have a selected service tag ID, use that
+      if (newSerialNumber.id) {
+        await addServiceTag({
+          ticketId: ticket.id,
+          serviceTagId: newSerialNumber.id
+        })
+      } else {
+        // Otherwise, create a new service tag first and then associate it
+        // This would be handled by the SerialNumberForm component
+        console.log('Creating new service tag not implemented in this handler')
+      }
+      
+      // Reset form and close
+      setNewSerialNumber({
+        id: '',
+        tag: '',
+        description: '',
+        hardware_type: '',
+        location: ''
+      })
+      setIsAddingSerialNumber(false)
     } finally {
       setIsSubmittingSerialNumber(false)
     }
@@ -182,7 +225,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
         assigned_user_id: ticket.assigned_user?.id || null
       })
       setNewComment("")
-      setNewSerialNumber({ tag: '', description: '', hardware_type: '', location: '' })
+      setNewSerialNumber({ id: '', tag: '', description: '', hardware_type: '', location: '' })
       setIsEditing(false)
     }
   }, [ticket])
@@ -221,6 +264,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
             {/* Serial Numbers */}
             <SerialNumbers 
               serialNumbers={serialNumbers || []}
+              isLoadingSerialNumbers={false}
               handleAddSerialNumber={handleAddSerialNumber}
               newSerialNumber={newSerialNumber}
               setNewSerialNumber={setNewSerialNumber}
@@ -228,6 +272,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
               setIsAddingSerialNumber={setIsAddingSerialNumber}
               isSubmittingSerialNumber={isSubmittingSerialNumber}
               clientId={ticket.client_id}
+              ticketId={ticket.id}
             />
           </TabsContent>
           

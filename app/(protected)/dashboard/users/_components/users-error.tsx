@@ -1,4 +1,3 @@
-import { UsersHeader } from "./users-header";
 
 interface UsersErrorProps {
   errorMessage: string;
@@ -7,7 +6,6 @@ interface UsersErrorProps {
 export function UsersError({ errorMessage }: UsersErrorProps) {
   return (
     <div className="space-y-4 p-4 md:p-8 pt-6">
-      <UsersHeader />
       <div className="space-y-4">
         {/* Filter skeleton */}
         <div className="flex items-center justify-between">

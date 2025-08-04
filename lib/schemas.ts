@@ -1,9 +1,59 @@
 import { z } from 'zod';
 
+// Type definitions for Clerk metadata types
+export type UserPublicMetadata = Record<string, unknown>;
+export type UserPrivateMetadata = Record<string, unknown>;
+export type UserUnsafeMetadata = Record<string, unknown>;
+export type EmailAddress = Record<string, unknown>;
+export type PhoneNumber = Record<string, unknown>;
+export type Web3Wallet = Record<string, unknown>;
+export type ExternalAccount = Record<string, unknown>;
+export type SamlAccount = Record<string, unknown>;
+export type UserJSON = Record<string, unknown>;
+
+// =============================================================================
+// CLERK SCHEMAS
+// =============================================================================
+
+// Schema for Clerk User object
+export const ClerkUserSchema = z.object({
+  id: z.string(),
+  passwordEnabled: z.boolean(),
+  totpEnabled: z.boolean(),
+  backupCodeEnabled: z.boolean(),
+  twoFactorEnabled: z.boolean(),
+  banned: z.boolean(),
+  locked: z.boolean(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+  imageUrl: z.string(),
+  hasImage: z.boolean(),
+  primaryEmailAddressId: z.string().nullable(),
+  primaryPhoneNumberId: z.string().nullable(),
+  primaryWeb3WalletId: z.string().nullable(),
+  lastSignInAt: z.number().nullable(),
+  externalId: z.string().nullable(),
+  username: z.string().nullable(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  publicMetadata: z.record(z.unknown()).optional(),
+  privateMetadata: z.record(z.unknown()).optional(),
+  unsafeMetadata: z.record(z.unknown()).optional(),
+  emailAddresses: z.array(z.record(z.unknown())).optional(),
+  phoneNumbers: z.array(z.record(z.unknown())).optional(),
+  web3Wallets: z.array(z.record(z.unknown())).optional(),
+  externalAccounts: z.array(z.record(z.unknown())).optional(),
+  samlAccounts: z.array(z.record(z.unknown())).optional(),
+  lastActiveAt: z.number().nullable(),
+  createOrganizationEnabled: z.boolean(),
+  createOrganizationsLimit: z.number().nullable(),
+  deleteSelfEnabled: z.boolean(),
+  legalAcceptedAt: z.number().nullable(),
+});
+
 // =============================================================================
 // ENUM SCHEMAS
 // =============================================================================
-
 export const UserRoleSchema = z.enum(['superadmin', 'admin', 'technician', 'client']);
 export const TicketStatusSchema = z.enum(['pending_approval', 'open', 'in_progress', 'resolved', 'closed']);
 export const TicketPrioritySchema = z.enum(['low', 'medium', 'high']);
@@ -12,6 +62,16 @@ export const TicketSourceSchema = z.enum(['email', 'phone', 'web', 'in_person'])
 // =============================================================================
 // BASE ENTITY SCHEMAS (Database Row Types)
 // =============================================================================
+export const UserClerkSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  name: z.string().min(1),
+  role: UserRoleSchema,
+  auth_id: z.string().nullable(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+
 
 export const UserSchema = z.object({
   id: z.string().uuid(),
@@ -262,6 +322,14 @@ export type TicketPriority = z.infer<typeof TicketPrioritySchema>;
 export type TicketSource = z.infer<typeof TicketSourceSchema>;
 
 export type User = z.infer<typeof UserSchema>;
+export type ClerkUserInternal = z.infer<typeof ClerkUserSchema>;
+
+// Type for Clerk's User object with properly typed metadata
+export interface ClerkUser extends ClerkUserInternal {
+  publicMetadata: UserPublicMetadata;
+  privateMetadata: UserPrivateMetadata;
+  unsafeMetadata: UserUnsafeMetadata;
+}
 export type Client = z.infer<typeof ClientSchema>;
 export type ServiceTag = z.infer<typeof ServiceTagSchema>;
 export type Ticket = z.infer<typeof TicketSchema>;

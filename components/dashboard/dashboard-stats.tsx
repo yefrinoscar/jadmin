@@ -26,7 +26,7 @@ export function DashboardStats() {
   const openTickets = tickets?.filter(t => t.status === 'open').length || 0;
   const inProgressTickets = tickets?.filter(t => t.status === 'in_progress').length || 0;
   const resolvedTickets = tickets?.filter(t => t.status === 'resolved').length || 0;
-  const criticalTickets = tickets?.filter(t => t.priority === 'critical').length || 0;
+  const criticalTickets = tickets?.filter(t => t.priority === 'high').length || 0;
 
   const totalClients = clients?.length || 0;
   const totalServiceTags = serviceTags?.length || 0;

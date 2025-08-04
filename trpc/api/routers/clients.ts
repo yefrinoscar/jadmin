@@ -8,27 +8,15 @@ import {
   SuccessResponseSchema
 } from '@/lib/schemas';
 
-
-// Helper function to check user role from database to avoid RLS recursion
-async function checkUserRole(ctx: any, allowedRoles: string[]) {
-  // This initial query is necessary to avoid RLS recursion
-  const { data: currentUser, error: userError } = await ctx.supabase
-    .from('users')
-    .select('role')
-    .eq('id', ctx.session!.user.id)
-    .single();
-  
-  if (userError || !currentUser || !allowedRoles.includes(currentUser.role)) {
-    throw new TRPCError({ 
-      code: 'FORBIDDEN', 
-      message: `Access requires one of these roles: ${allowedRoles.join(', ')}` 
-    });
-  }
-  return currentUser.role;
-}
-
 export const clientsRouter = createTRPCRouter({
   getAll: protectedProcedure.query(async ({ ctx }) => {
+    // const user = await getUser(ctx);
+    // if (!['superadmin', 'admin', 'technician'].includes(user.role)) {
+    //   throw new TRPCError({
+    //     code: 'FORBIDDEN',
+    //     message: 'You do not have permission to view clients.'
+    //   });
+    // }
     // Get clients with service tags and tickets count
     const { data: clients, error: clientsError } = await ctx.supabase
       .from('clients')
@@ -83,6 +71,13 @@ export const clientsRouter = createTRPCRouter({
   create: protectedProcedure
     .input(CreateClientInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to create clients.'
+        });
+      }
       const { data, error } = await ctx.supabase
         .from('clients')
         .insert([input])
@@ -96,6 +91,13 @@ export const clientsRouter = createTRPCRouter({
   update: protectedProcedure
     .input(UpdateClientInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;    
+      if (!['superadmin', 'admin'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to update clients.'
+        });
+      }
       const { id, ...updateData } = input;
       const { data, error } = await ctx.supabase
         .from('clients')
@@ -110,7 +112,14 @@ export const clientsRouter = createTRPCRouter({
 
   delete: protectedProcedure
     .input(IdParamSchema)
-    .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to delete clients.'
+        });
+      }
       // Check if client has any service tags or tickets
       const { count: serviceTagsCount, error: serviceTagsError } = await ctx.supabase
         .from('service_tags')

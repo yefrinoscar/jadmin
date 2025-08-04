@@ -1,17 +1,20 @@
 import { HydrateClient, prefetch, trpc } from "@/trpc/server";
 import { Suspense } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CreateUserDialog } from "./components/create-user-dialog";
-import { UsersTableSkeleton } from "./components/users-skeleton";
-import { UsersContent } from "./components/users-content";
+import { UsersTableSkeleton } from "./_components/users-skeleton";
+import { UsersContent } from "./_components/users-content";
 
 // Client component that receives hydrated data
 export default function UsersPage() {
 
-  prefetch(
-    trpc.users.getAll.queryOptions()
-  );
 
+  // prefetch(
+  //   trpc.users.getAll.queryOptions()
+  // );
+
+  // prefetch(
+  //   trpc.users.getCurrentUser.queryOptions()
+  // );
+  
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="space-y-2 mb-8">

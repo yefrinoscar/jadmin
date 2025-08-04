@@ -25,6 +25,16 @@ const ServiceTagIdSchema = z.object({
   id: z.string().uuid()
 });
 
+const RemoveServiceTagSchema = z.object({
+  ticketId: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
+  serviceTagId: z.string()
+});
+
+const AddServiceTagSchema = z.object({
+  ticketId: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
+  serviceTagId: z.string()
+});
+
 const TicketStatusUpdateSchema = z.object({
   id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format"),
   status: TicketStatusEnum
@@ -71,7 +81,16 @@ const TicketsListOutputSchema = z.array(TicketListItemSchema);
 export type TicketListItem = z.infer<typeof TicketListItemSchema>;
 
 export const ticketsRouter = createTRPCRouter({
+  // NOTE: The following authorization rules are assumptions and may need to be refined
+  // based on specific business logic for client users.
   getAll: protectedProcedure.query(async ({ ctx }) => {
+    const role = ctx.user?.publicMetadata.role as string;
+    if (!['superadmin', 'admin', 'technician'].includes(role)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to view all tickets.'
+      });
+    }
     const { data, error } = await ctx.supabase
       .from('tickets')
       .select(`
@@ -138,6 +157,14 @@ export const ticketsRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(IdParamSchema)
     .query(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      // Allow admins/techs to see any ticket. Logic for client users would be more complex.
+      if (!['superadmin', 'admin', 'technician'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to view this ticket.'
+        });
+      }
       const { data, error } = await ctx.supabase
         .from('tickets')
         .select(`
@@ -172,6 +199,16 @@ export const ticketsRouter = createTRPCRouter({
   getByClientId: protectedProcedure
     .input(ClientIdParamSchema)
     .query(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      const userId = ctx.auth.userId;
+      // Allow admins/techs to see any client's tickets.
+      // For client users, check if they belong to the requested client.
+      if (!['superadmin', 'admin', 'technician'].includes(role) && userId !== input.clientId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to view tickets for this client.'
+        });
+      }
       const { data, error } = await ctx.supabase
         .from('tickets')
         .select(`
@@ -202,6 +239,14 @@ export const ticketsRouter = createTRPCRouter({
   getByServiceTagId: protectedProcedure
     .input(ServiceTagIdSchema)
     .query(async ({ ctx, input }) => {
+      // This procedure is likely used by technicians and admins, so we restrict it.
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin', 'technician'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action.'
+        });
+      }
       // First get the ticket IDs that have this service tag
       const { data: ticketServiceTags, error: junctionError } = await ctx.supabase
         .from('ticket_service_tags')
@@ -253,10 +298,11 @@ export const ticketsRouter = createTRPCRouter({
   create: protectedProcedure
     .input(CreateTicketInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
       // Add the current user as the creator
       const ticketData = {
         ...input,
-        user_id: ctx.user.id,
+        user_id: ctx.auth.userId,
         status: 'open'
       };
 
@@ -273,6 +319,13 @@ export const ticketsRouter = createTRPCRouter({
   update: protectedProcedure
     .input(UpdateTicketInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin', 'technician'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to update tickets.'
+        });
+      }
       const { id, ...updateData } = input;
       const { data, error } = await ctx.supabase
         .from('tickets')
@@ -288,6 +341,13 @@ export const ticketsRouter = createTRPCRouter({
   updateStatus: protectedProcedure
     .input(TicketStatusUpdateSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin', 'technician'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to update ticket status.'
+        });
+      }
       const { id, status } = input;
       const { data, error } = await ctx.supabase
         .from('tickets')
@@ -303,6 +363,13 @@ export const ticketsRouter = createTRPCRouter({
   assignTicket: protectedProcedure
     .input(TicketAssignmentSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to assign tickets.'
+        });
+      }
       const { id, assigned_user_id } = input;
       const { data, error } = await ctx.supabase
         .from('tickets')
@@ -318,12 +385,94 @@ export const ticketsRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(IdParamSchema)
     .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to delete tickets.'
+        });
+      }
       const { error } = await ctx.supabase
         .from('tickets')
         .delete()
         .eq('id', input.id);
 
       if (error) throw error;
+      return SuccessResponseSchema.parse({ success: true });
+    }),
+
+  removeServiceTag: protectedProcedure
+    .input(RemoveServiceTagSchema)
+    .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin', 'technician'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to modify service tags on a ticket.'
+        });
+      }
+      const { error } = await ctx.supabase
+        .from('ticket_service_tags')
+        .delete()
+        .eq('ticket_id', input.ticketId)
+        .eq('service_tag_id', input.serviceTagId);
+
+      if (error) throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to remove service tag: ${error.message}`,
+        cause: error
+      });
+
+      return SuccessResponseSchema.parse({ success: true });
+    }),
+    
+  addServiceTag: protectedProcedure
+    .input(AddServiceTagSchema)
+    .mutation(async ({ ctx, input }) => {
+      const role = ctx.user?.publicMetadata.role as string;
+      if (!['superadmin', 'admin', 'technician'].includes(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to modify service tags on a ticket.'
+        });
+      }
+      // First check if the association already exists to avoid duplicates
+      const { data: existingAssociation, error: checkError } = await ctx.supabase
+        .from('ticket_service_tags')
+        .select('*')
+        .eq('ticket_id', input.ticketId)
+        .eq('service_tag_id', input.serviceTagId)
+        .maybeSingle();
+
+      if (checkError) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to check existing service tag association: ${checkError.message}`,
+          cause: checkError
+        });
+      }
+
+      // If association already exists, return success without creating a duplicate
+      if (existingAssociation) {
+        return SuccessResponseSchema.parse({ success: true });
+      }
+
+      // Create the association
+      const { error } = await ctx.supabase
+        .from('ticket_service_tags')
+        .insert({
+          ticket_id: input.ticketId,
+          service_tag_id: input.serviceTagId
+        });
+
+      if (error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to add service tag to ticket: ${error.message}`,
+          cause: error
+        });
+      }
+
       return SuccessResponseSchema.parse({ success: true });
     }),
 });

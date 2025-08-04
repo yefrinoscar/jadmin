@@ -2,6 +2,7 @@
 
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { RouteLoadingIndicator } from "@/components/route-loading-indicator";
+import { Suspense } from "react";
 
 export default function DashboardLayout({
   children,
@@ -21,7 +22,9 @@ export default function DashboardLayout({
       </main>
 
       {/* Route Loading Indicator */}
-      <RouteLoadingIndicator />
+      <Suspense fallback={null}>
+        <RouteLoadingIndicator />
+      </Suspense>
     </div>
   );
 }

@@ -12,11 +12,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTRPC } from "@/trpc/client"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { makeQueryClient } from "@/trpc/query-client"
 import { toast } from "sonner"
 import { ServiceTagErrorCode, SERVICE_TAG_ERROR_MESSAGES } from "@/lib/errors"
 
 interface SerialNumberInput {
+  id: string
   tag: string
   description: string
   hardware_type: string
@@ -39,7 +41,9 @@ interface SerialNumbersProps {
   isAddingSerialNumber: boolean
   setIsAddingSerialNumber: (isAdding: boolean) => void
   isSubmittingSerialNumber: boolean
+  isLoadingSerialNumbers: boolean
   clientId?: string
+  ticketId?: string
 }
 
 function SerialNumberTabs({
@@ -49,7 +53,9 @@ function SerialNumberTabs({
   isSubmittingSerialNumber,
   setIsAddingSerialNumber,
   clientId,
-  serialNumbers: existingSerialNumbers
+  ticketId,
+  serialNumbers: existingSerialNumbers,
+  isLoadingSerialNumbers
 }: {
   newSerialNumber: SerialNumberInput
   setNewSerialNumber: (serialNumber: SerialNumberInput) => void
@@ -57,17 +63,20 @@ function SerialNumberTabs({
   isSubmittingSerialNumber: boolean
   setIsAddingSerialNumber: (isAdding: boolean) => void
   clientId?: string
+  ticketId?: string
   serialNumbers: SerialNumber[]
+  isLoadingSerialNumbers: boolean
 }) {
   const [selectedTab, setSelectedTab] = useState<string>("existing")
   const [searchQuery, setSearchQuery] = useState<string>("") 
-  const [selectedSerialNumber, setSelectedSerialNumber] = useState<SerialNumber | null>(null)
+  const [selectedSerialNumber, setSelectedSerialNumber] = useState<SerialNumber | null>(null)  
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
   // We don't need this duplicate state since we already have newSerialNumber
 
   
   // Use tRPC to fetch real serial numbers by client
-  const trpc = useTRPC()
-  const { data: clientSerialNumbers = [] } = useQuery({
+  const { data: clientSerialNumbers = [], isLoading: isLoadingClientSerialNumbers } = useQuery({
     ...trpc.serviceTags.getByClientId.queryOptions({ clientId: clientId || '' }),
     enabled: !!clientId
   })
@@ -102,14 +111,30 @@ function SerialNumberTabs({
     setSelectedSerialNumber(originalSerialNumber)
   }
   
-  const handleSubmitExisting = (e: React.FormEvent) => {
+  const handleSubmitExisting = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedSerialNumber) return
+    if (!selectedSerialNumber || !ticketId) return
     
-    // Here you would handle adding the selected serial number to the ticket
-    handleAddSerialNumber(e)
+    try {
+      // Call the addServiceTag mutation to associate the service tag with the ticket
+      await addServiceTag({
+        ticketId,
+        serviceTagId: selectedSerialNumber.id
+      })
+      
+      // Reset selected serial number
+      setSelectedSerialNumber(null)
+      
+      // Close the form
+      setIsAddingSerialNumber(false)
+      
+      // Refetch data to update the UI
+      refetch()
+    } catch (error: any) {
+      toast.error(`Error al añadir número de serie: ${error.message}`)
+    }
   }
-  
+
   // Create new serial number mutation
   const { mutateAsync: createSerialNumber, isPending: isCreating } = useMutation(
     trpc.serviceTags.create.mutationOptions({
@@ -123,10 +148,22 @@ function SerialNumberTabs({
   
   // Extract refetch function from the query
   const { refetch } = useQuery({
-    ...trpc.serviceTags.getByClientId.queryOptions({ clientId: clientId || '' }),
+    ...trpc.serviceTags.getByTicketId.queryOptions({ ticketId: ticketId || '' }),
     enabled: false // Don't run this query automatically, we'll use refetch manually
   })
   
+  // Mutation for adding a service tag to a ticket
+  const { mutateAsync: addServiceTag } = useMutation(trpc.tickets.addServiceTag.mutationOptions({
+    onSuccess: () => {
+      toast.success('Número de serie añadido exitosamente')
+
+      queryClient.invalidateQueries({ queryKey: trpc.serviceTags.getByTicketId.queryOptions({ ticketId: ticketId || '' }).queryKey })
+    },
+    onError: (error) => {
+      toast.error(`Error al añadir número de serie: ${error.message}`)
+    } 
+  }))
+
   // Handle creating a new serial number
   const handleCreateSerialNumber = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -134,19 +171,28 @@ function SerialNumberTabs({
     
     try {
       // Usamos isCreating de la mutación para mostrar el estado de carga
-      await createSerialNumber({
+      const newTag = await createSerialNumber({
         tag: newSerialNumber.tag,
         description: newSerialNumber.description,
         client_id: clientId,
         hardware_type: newSerialNumber.hardware_type || 'Unknown',
         location: newSerialNumber.location || 'Unknown'
       })
+
+      // Use the ID from the newly created service tag
+      await addServiceTag({
+        ticketId: ticketId || '',
+        serviceTagId: newTag.id
+      })
+
+      queryClient.invalidateQueries({ queryKey: trpc.serviceTags.getByTicketId.queryOptions({ ticketId: ticketId || '' }).queryKey })
       
       // Mostrar mensaje de éxito
       toast.success("Número de serie creado exitosamente")
-            
+      
       // Reset form
       setNewSerialNumber({
+        id: '',
         tag: '',
         description: '',
         hardware_type: '',
@@ -154,7 +200,7 @@ function SerialNumberTabs({
       })
       
       // Switch to existing tab
-      setSelectedTab('existing')
+      setIsAddingSerialNumber(false)
     } catch (error: any) {
       // Extraer el mensaje de error específico
       let errorMessage = 'Error desconocido';
@@ -188,50 +234,57 @@ function SerialNumberTabs({
       </TabsList>
       
       <TabsContent value="existing" className="mt-2 space-y-3">
-        <div className="space-y-1.5">
+        <div className="flex items-center gap-2 mb-2">
+          <Search className="h-4 w-4 text-muted-foreground" />
           <Input
-            type="search"
-            placeholder="Buscar por ID, descripción, tipo..."
+            placeholder="Buscar número de serie..."
             className="h-8 text-xs"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         
-        <div className="h-48 border rounded-md p-1 overflow-y-auto">
-          <div className="space-y-1">
-            {filteredSerialNumbers.length > 0 ? (
-              filteredSerialNumbers.map((serialNumber) => (
-                <div 
-                  key={serialNumber.id}
-                  className={`flex items-start p-2 rounded-md cursor-pointer transition-colors ${selectedSerialNumber?.id === serialNumber.id ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/30 border border-transparent'}`}
-                  onClick={() => handleSelectSerialNumber(serialNumber)}
-                >
-                  <div className="flex gap-2 w-full">
-                    <Tag className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
-                    <div className="w-full">
-                      <div className="flex justify-between items-start w-full">
-                        <p className="text-xs font-medium">{serialNumber.tag}</p>
-                        <Badge variant="outline" className="text-[10px] h-4 px-1 font-normal">
-                          {serialNumber.hardware_type}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{serialNumber.description}</p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">{serialNumber.location}</span>
+        {isLoadingSerialNumbers || isLoadingClientSerialNumbers ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-xs text-muted-foreground">Cargando números de serie...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 mt-4 max-h-[300px] overflow-y-auto pr-1">
+            <div className="space-y-1">
+              {filteredSerialNumbers.length > 0 ? (
+                filteredSerialNumbers.map((serialNumber) => (
+                  <div 
+                    key={serialNumber.id}
+                    className={`flex items-start p-2 rounded-md cursor-pointer transition-colors ${selectedSerialNumber?.id === serialNumber.id ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted/30 border border-transparent'}`}
+                    onClick={() => handleSelectSerialNumber(serialNumber)}
+                  >
+                    <div className="flex gap-2 w-full">
+                      <Tag className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
+                      <div className="w-full">
+                        <div className="flex justify-between items-start w-full">
+                          <p className="text-xs font-medium">{serialNumber.tag}</p>
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 font-normal">
+                            {serialNumber.hardware_type}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{serialNumber.description}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground">{serialNumber.location}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                  <p className="text-xs">No se encontraron resultados</p>
                 </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
-                <p className="text-xs">No se encontraron resultados</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
         
         <div className="flex justify-end gap-2 pt-1">
           <Button 
@@ -244,10 +297,11 @@ function SerialNumberTabs({
             Cancelar
           </Button>
           <Button 
-            onClick={handleSubmitExisting}
+            type="button" 
             size="sm"
-            disabled={!selectedSerialNumber || isSubmittingSerialNumber}
             className="h-7 text-xs"
+            onClick={handleSubmitExisting}
+            disabled={!selectedSerialNumber || isSubmittingSerialNumber}
           >
             {isSubmittingSerialNumber ? (
               <>
@@ -360,8 +414,38 @@ export function SerialNumbers({
   isAddingSerialNumber,
   setIsAddingSerialNumber,
   isSubmittingSerialNumber,
-  clientId
+  isLoadingSerialNumbers,
+  clientId,
+  ticketId
 }: SerialNumbersProps) {
+  const [isDeletingSerialNumber, setIsDeletingSerialNumber] = useState<string | null>(null)
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
+  
+  // Mutation for removing a service tag from a ticket
+  const { mutateAsync: removeServiceTag } = useMutation(trpc.tickets.removeServiceTag.mutationOptions({
+    onSuccess: () => {
+      toast.success('Número de serie eliminado exitosamente')
+      // Invalidate queries to refetch data
+
+      const queryKey = [['serviceTags', 'getByTicketId'], { input: { ticketId }, type: 'query' }]
+      queryClient.invalidateQueries({ queryKey })
+    },
+    onError: (error) => {
+      toast.error(`Error al eliminar número de serie: ${error.message}`)
+    }
+  }))
+  
+  const handleDeleteSerialNumber = async (serialNumberId: string) => {
+    if (!ticketId) return
+    
+    try {
+      setIsDeletingSerialNumber(serialNumberId)
+      await removeServiceTag({ ticketId, serviceTagId: serialNumberId })
+    } finally {
+      setIsDeletingSerialNumber(null)
+    }
+  }
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -403,13 +487,20 @@ export function SerialNumbers({
                 isSubmittingSerialNumber={isSubmittingSerialNumber}
                 setIsAddingSerialNumber={setIsAddingSerialNumber}
                 clientId={clientId}
+                ticketId={ticketId}
                 serialNumbers={serialNumbers}
+                isLoadingSerialNumbers={isLoadingSerialNumbers}
               />
             </CardContent>
           </Card>
         )}
         
-        {serialNumbers && serialNumbers.length > 0 ? (
+        {isLoadingSerialNumbers ? (
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground border border-dashed rounded-md">
+            <Loader2 className="h-10 w-10 text-muted-foreground/50 mb-2 animate-spin" />
+            <p className="text-sm">Cargando números de serie...</p>
+          </div>
+        ) : serialNumbers && serialNumbers.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {serialNumbers.map((serialNumber) => (
               <div 
@@ -441,8 +532,14 @@ export function SerialNumbers({
                   variant="ghost" 
                   size="sm" 
                   className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleDeleteSerialNumber(serialNumber.id)}
+                  disabled={isDeletingSerialNumber === serialNumber.id}
                 >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  {isDeletingSerialNumber === serialNumber.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  )}
                 </Button>
               </div>
             ))}

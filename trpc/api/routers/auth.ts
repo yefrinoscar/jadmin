@@ -1,12 +1,11 @@
-import { createTRPCRouter, publicProcedure } from '../../init';
-// Register functionality has been moved to users router
+import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
+import { createTRPCRouter, protectedProcedure, publicProcedure } from '../../init';
 
+// Register functionality has been moved to the usersRouter
 
 export const authRouter = createTRPCRouter({
-  // Auth routes
-  getSession: publicProcedure.query(async ({ ctx }) => {
-    return ctx.user;
-  })
-  
-  // Register functionality has been moved to usersRouter
+  getSession: publicProcedure.query(async ({ ctx }) => {      
+    return ctx.auth;
+  }),
 });

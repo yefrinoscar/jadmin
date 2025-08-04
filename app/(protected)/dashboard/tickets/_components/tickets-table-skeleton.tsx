@@ -7,7 +7,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export function TicketsTableSkeleton() {
   return (
     <div className="space-y-4">
-      {/* Filter and Actions Row */}
       <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
         <div className="flex flex-1 flex-col space-y-2 md:flex-row md:items-center md:space-y-0 md:space-x-2">
           <Skeleton className="h-8 w-full md:w-[250px]" />

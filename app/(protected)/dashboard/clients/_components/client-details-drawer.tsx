@@ -74,7 +74,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   }, [client])
   
   // Client update mutation
-  const updateClientMutation = useMutation({
+  const { mutate: updateClient, isPending: isUpdatingClient } = useMutation({
     mutationFn: (data: { id: string } & Partial<ClientFormData>) => {
       return fetch('/api/trpc/clients.update', {
         method: 'POST',
@@ -82,7 +82,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          json: data
+          input: data
         }),
       }).then(res => res.json())
     },
@@ -110,7 +110,13 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   // Update local state when data changes
   React.useEffect(() => {
     if (data) {
-      setServiceTags(data)
+      // Asegurar que las fechas se manejan como strings
+      const formattedData = data.map(tag => ({
+        ...tag,
+        created_at: typeof tag.created_at === 'object' ? tag.created_at.toISOString() : tag.created_at,
+        updated_at: typeof tag.updated_at === 'object' ? tag.updated_at.toISOString() : tag.updated_at
+      }))
+      setServiceTags(formattedData)
     }
   }, [data])
 
@@ -125,23 +131,71 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   }
 
   // Create mutation for adding service tags
-  const addServiceTagOptions = trpc.serviceTags.create.mutationOptions({
-    onSuccess: (newTag) => {
+  const { mutate: addServiceTag, isPending: isAddingServiceTag } = useMutation({
+    mutationFn: (data: {
+      client_id: string;
+      tag: string;
+      description: string;
+      hardware_type: string;
+      location: string;
+    }) => {
+      return fetch('/api/trpc/serviceTags.create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: data
+        }),
+      }).then(res => res.json())
+    },
+    onSuccess: (response) => {
+      const responseData = response.result.data
+      // Asegurar que las fechas se manejan como strings
+      const newTag = {
+        ...responseData,
+        created_at: typeof responseData.created_at === 'object' ? responseData.created_at.toISOString() : responseData.created_at,
+        updated_at: typeof responseData.updated_at === 'object' ? responseData.updated_at.toISOString() : responseData.updated_at
+      }
       setServiceTags(prev => [newTag, ...prev])
       toast.success('Número de serie añadido correctamente')
       setIsAddDialogOpen(false)
       resetForm()
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error adding service tag:', error)
       toast.error(`Error al añadir número de serie: ${error.message || 'Error desconocido'}`)
     }
   })
-  const addServiceTagMutation = useMutation(addServiceTagOptions)
 
   // Create mutation for updating service tags
-  const updateServiceTagOptions = trpc.serviceTags.update.mutationOptions({
-    onSuccess: (updatedTag) => {
+  const { mutate: updateServiceTag, isPending: isUpdatingServiceTag } = useMutation({
+    mutationFn: (data: {
+      id: string;
+      client_id: string;
+      tag: string;
+      description: string;
+      hardware_type: string;
+      location: string;
+    }) => {
+      return fetch('/api/trpc/serviceTags.update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: data
+        }),
+      }).then(res => res.json())
+    },
+    onSuccess: (response) => {
+      const responseData = response.result.data
+      // Asegurar que las fechas se manejan como strings
+      const updatedTag = {
+        ...responseData,
+        created_at: typeof responseData.created_at === 'object' ? responseData.created_at.toISOString() : responseData.created_at,
+        updated_at: typeof responseData.updated_at === 'object' ? responseData.updated_at.toISOString() : responseData.updated_at
+      }
       setServiceTags(prev => prev.map(tag => 
         tag.id === updatedTag.id ? updatedTag : tag
       ))
@@ -150,15 +204,32 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
       setSelectedTag(null)
       resetForm()
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error updating service tag:', error)
       toast.error(`Error al actualizar número de serie: ${error.message || 'Error desconocido'}`)
     }
   })
-  const updateServiceTagMutation = useMutation(updateServiceTagOptions)
 
   // Create mutation for deleting service tags
-  const deleteServiceTagOptions = trpc.serviceTags.delete.mutationOptions({
+  const { mutate: deleteServiceTag, isPending: isDeletingServiceTag } = useMutation({
+    mutationFn: async (data: { id: string }) => {
+      const response = await fetch('/api/trpc/serviceTags.delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: data
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error?.message || 'Error al eliminar número de serie')
+      }
+      
+      return response.json()
+    },
     onSuccess: () => {
       if (selectedTag) {
         setServiceTags(prev => prev.filter(tag => tag.id !== selectedTag.id))
@@ -167,23 +238,22 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
         setSelectedTag(null)
       }
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error deleting service tag:', error)
       toast.error(`Error al eliminar número de serie: ${error.message || 'Error desconocido'}`)
     }
   })
-  const deleteServiceTagMutation = useMutation(deleteServiceTagOptions)
 
   // Handle adding a new service tag
   const handleAddServiceTag = () => {
-    if (!client?.id) return
-    
-    addServiceTagMutation.mutate({
+    if (!client) return
+
+    addServiceTag({
       client_id: client.id,
       tag: formData.tag,
-      description: formData.description,
-      hardware_type: formData.hardware_type,
-      location: formData.location
+      description: formData.description || '',
+      hardware_type: formData.hardware_type || '',
+      location: formData.location || ''
     })
   }
 
@@ -191,7 +261,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   const handleUpdateServiceTag = () => {
     if (!selectedTag) return
     
-    updateServiceTagMutation.mutate({
+    updateServiceTag({
       id: selectedTag.id,
       client_id: selectedTag.client_id,
       tag: formData.tag,
@@ -205,7 +275,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   const handleDeleteServiceTag = () => {
     if (!selectedTag) return
     
-    deleteServiceTagMutation.mutate({
+    deleteServiceTag({
       id: selectedTag.id
     })
   }
@@ -244,7 +314,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
   const handleUpdateClient = () => {
     if (!client) return
 
-    updateClientMutation.mutate({
+    updateClient({
       id: client.id,
       email: clientFormData.email,
       phone: clientFormData.phone,
@@ -308,10 +378,10 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={handleUpdateClient}
-                      disabled={updateClientMutation.isPending}
+                      disabled={isUpdatingClient}
                       className="flex items-center text-sm text-green-600 hover:text-green-800"
                     >
-                      {updateClientMutation.isPending ? (
+                      {isUpdatingClient ? (
                         <span className="animate-spin mr-1">⏳</span>
                       ) : (
                         <Save className="h-4 w-4 mr-1" />
@@ -436,7 +506,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
         formData={formData}
         onInputChange={handleInputChange}
         onSubmit={handleAddServiceTag}
-        isSubmitting={addServiceTagMutation.isPending}
+        isSubmitting={isAddingServiceTag}
       />
 
       {/* Edit Service Tag Dialog */}
@@ -446,7 +516,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
         formData={formData}
         onInputChange={handleInputChange}
         onSubmit={handleUpdateServiceTag}
-        isSubmitting={updateServiceTagMutation.isPending}
+        isSubmitting={isUpdatingServiceTag}
       />
 
       {/* Delete Service Tag Dialog */}
@@ -455,7 +525,7 @@ export function ClientDetailsDrawer({ client, open, onClose }: ClientDetailsDraw
         onOpenChange={setIsDeleteDialogOpen}
         selectedTag={selectedTag}
         onDelete={handleDeleteServiceTag}
-        isDeleting={deleteServiceTagMutation.isPending}
+        isDeleting={isDeletingServiceTag}
       />
     </>
   )

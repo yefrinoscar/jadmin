@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm, useWatch } from "react-hook-form"
+import { useForm, useWatch, FieldErrors } from "react-hook-form"
 import { z } from "zod"
-import { Loader2, User, Mail, Shield, Lock, RefreshCw, Eye, EyeOff, Building } from "lucide-react"
+import { Loader2, User, Mail, Shield, Lock, RefreshCw, Eye, EyeOff, Building, Plus, Phone, MapPin, AlertCircle, XCircle } from "lucide-react"
 import { generateReadablePassword } from "@/lib/utils/password-generator"
 
 import { Button } from "@/components/ui/button"
@@ -27,6 +27,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -36,7 +37,7 @@ import {
 } from "@/components/ui/select"
 import { useTRPC } from "@/trpc/client"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
-import { CreateUserInputSchema, UserRoleSchema, USER_ROLE_LABELS } from "@/lib/schemas"
+import { CreateUserInputSchema, UserRoleSchema, USER_ROLE_LABELS, ClientSchema } from "@/lib/schemas"
 
 interface CreateUserDialogProps {
   children: React.ReactNode
@@ -46,17 +47,23 @@ interface CreateUserDialogProps {
 export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogProps) {
   const [open, setOpen] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [formErrors, setFormErrors] = useState<string[]>([])
   
+
+
   // Create a schema that includes all fields from CreateUserInputSchema plus password
-  const CreateUserWithPasswordSchema = z.object({
+  // and optional new client fields
+  const CreateUserSchema = z.object({
     email: z.string().email('Please enter a valid email address'),
     name: z.string().min(1, 'Name is required'),
     role: UserRoleSchema,
     password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
     client_id: z.string().uuid('Please select a valid client').optional(),
-  }).refine(data => {
-    // If role is client, client_id is required
-    if (data.role === 'client') {
+    create_new_client: z.boolean().optional(),
+  })
+  .refine(data => {
+    // If role is client and not creating a new client, client_id is required
+    if (data.role === 'client' && !data.create_new_client) {
       return !!data.client_id;
     }
     return true;
@@ -64,18 +71,20 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     message: "Client selection is required for users with 'client' role",
     path: ["client_id"],
   })
+
   
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   
-  const form = useForm<z.infer<typeof CreateUserWithPasswordSchema>>({
-    resolver: zodResolver(CreateUserWithPasswordSchema),
+  const form = useForm<z.infer<typeof CreateUserSchema>>({
+    resolver: zodResolver(CreateUserSchema),
     defaultValues: {
       name: "",
       email: "",
       role: "technician",
       password: "",
       client_id: undefined,
+      create_new_client: false,
     },
   })
   
@@ -84,6 +93,13 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     control: form.control,
     name: "role",
     defaultValue: "technician"
+  })
+  
+  // Watch the create_new_client field to toggle between client selection and new client creation
+  const createNewClient = useWatch({
+    control: form.control,
+    name: "create_new_client",
+    defaultValue: false
   })
   
   // Define client interface
@@ -111,10 +127,21 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     },
   }))
 
-  function onSubmit(values: z.infer<typeof CreateUserWithPasswordSchema>) {
-    // Pass all form values to the mutation
-    // The schema validation ensures client_id is present when role is 'client'
-    createUser(values)
+  function onSubmit(values: z.infer<typeof CreateUserSchema>) {
+    // Reset any previous errors
+    setFormErrors([]);
+    
+    // Prepare the data for the mutation
+    const userData = {
+      email: values.email,
+      name: values.name,
+      role: values.role,
+      password: values.password,
+      client_id: values.create_new_client ? undefined : values.client_id
+    }
+    
+    // Pass the data to the mutation
+    createUser(userData)
   }
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -303,69 +330,130 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
               )}
             />
             
-            {/* Client selection dropdown - only shown when role is 'client' */}
+            {/* Client association - only shown when role is 'client' */}
             {role === "client" && (
-              <FormField
-                control={form.control}
-                name="client_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cliente Asociado</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
-                      defaultValue={field.value}
-                      disabled={isLoadingClients}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <div className="flex items-center gap-2">
-                            <Building className="w-4 h-4 text-muted-foreground" />
-                            <SelectValue placeholder="Selecciona un cliente" />
-                          </div>
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {isLoadingClients ? (
-                          <SelectItem value="loading" disabled>
+              <div className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="create_new_client"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cliente Asociado</FormLabel>
+                      <Tabs
+                        defaultValue={field.value ? "new" : "existing"}
+                        className="w-full"
+                        onValueChange={(value) => {
+                          field.onChange(value === "new");
+                          if (value === "existing") {
+                            // No need to set new_client as it's not in the schema
+                          } else {
+                            form.setValue("client_id", undefined);
+                          }
+                        }}
+                      >
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="existing">
                             <div className="flex items-center gap-2">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Cargando clientes...
+                              <Building className="w-4 h-4" />
+                              Cliente Existente
                             </div>
-                          </SelectItem>
-                        ) : clients.length === 0 ? (
-                          <SelectItem value="none" disabled>
-                            No hay clientes disponibles
-                          </SelectItem>
-                        ) : (
-                          clients.map((client: Client) => (
-                            <SelectItem key={client.id} value={client.id}>
-                              <div className="flex items-center gap-2">
-                                <Building className="w-4 h-4 text-muted-foreground" />
-                                {client.name}{client.company_name ? ` - ${client.company_name}` : ''}
-                              </div>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Selecciona el cliente al que pertenece este usuario.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {error && (
-              <div className="rounded-md bg-destructive/15 p-3">
-                <div className="flex">
-                  <div className="text-sm text-destructive">
-                    Error al crear usuario: {error.message}
-                  </div>
-                </div>
+                          </TabsTrigger>
+                          <TabsTrigger value="new">
+                            <div className="flex items-center gap-2">
+                              <Plus className="w-4 h-4" />
+                              Nuevo Cliente
+                            </div>
+                          </TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="existing" className="pt-4">
+                          <FormField
+                            control={form.control}
+                            name="client_id"
+                            render={({ field }) => (
+                              <FormItem>
+                                <Select 
+                                  onValueChange={field.onChange} 
+                                  defaultValue={field.value}
+                                  disabled={isLoadingClients}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <div className="flex items-center gap-2">
+                                        <Building className="w-4 h-4 text-muted-foreground" />
+                                        <SelectValue placeholder="Selecciona un cliente" />
+                                      </div>
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {isLoadingClients ? (
+                                      <SelectItem value="loading" disabled>
+                                        <div className="flex items-center gap-2">
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          Cargando clientes...
+                                        </div>
+                                      </SelectItem>
+                                    ) : clients.length === 0 ? (
+                                      <SelectItem value="none" disabled>
+                                        No hay clientes disponibles
+                                      </SelectItem>
+                                    ) : (
+                                      clients.map((client: Client) => (
+                                        <SelectItem key={client.id} value={client.id}>
+                                          <div className="flex items-center gap-2">
+                                            <Building className="w-4 h-4 text-muted-foreground" />
+                                            {client.name}{client.company_name ? ` - ${client.company_name}` : ''}
+                                          </div>
+                                        </SelectItem>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                                <FormDescription>
+                                  Selecciona el cliente al que pertenece este usuario.
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </TabsContent>
+                        
+                        <TabsContent value="new" className="space-y-4 pt-4">
+                          <div className="space-y-4">
+                            <div className="flex items-center">
+                              <User className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="Nombre del cliente" />
+                            </div>
+                          
+                            <div className="flex items-center">
+                              <Building className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="Nombre de la empresa (opcional)" />
+                            </div>
+                          
+                            <div className="flex items-center">
+                              <Mail className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="Email del cliente (opcional)" />
+                            </div>
+                          
+                            <div className="flex items-center">
+                              <Phone className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="Teléfono del cliente (opcional)" />
+                            </div>
+                          
+                            <div className="flex items-center">
+                              <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Input placeholder="Dirección del cliente (opcional)" />
+                            </div>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                    </FormItem>
+                  )}
+                />
               </div>
             )}
+
+
 
             <DialogFooter>
               <Button 
