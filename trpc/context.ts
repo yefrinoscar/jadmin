@@ -27,8 +27,11 @@ export const createTRPCContext = async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      accessToken: async () => (await session.getToken() as string) ?? null,
-      // cookies: {
+      global: {
+        headers: {
+          Authorization: await session.getToken() ? `Bearer ${await session.getToken()}` : '',
+        },
+      },      // cookies: {
       //   getAll() {
       //     return cookieStore.getAll();
       //   },

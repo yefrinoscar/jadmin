@@ -56,7 +56,7 @@ export const usersRouter = createTRPCRouter({
         message: 'You do not have permission to view all users.',
       });
     }
-
+ 
     const { data, error } = await ctx.supabase
       .from('users')
       .select('*, clients:client_id (id, name, company_name)')
