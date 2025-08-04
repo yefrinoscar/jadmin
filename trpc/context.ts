@@ -1,6 +1,5 @@
 import { auth, currentUser, User } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 
 export interface CreateContextOptions {
   supabase: ReturnType<typeof createClient<any, 'public', any>>;
@@ -19,7 +18,6 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
 
 export const createTRPCContext = async () => {
   const session = await auth()
-  const cookieStore = await cookies();
   const user = await currentUser()  
 
   // Create Supabase client with proper cookie handling
@@ -29,24 +27,9 @@ export const createTRPCContext = async () => {
     {
       global: {
         headers: {
-          Authorization: await session.getToken() ? `Bearer ${await session.getToken()}` : '',
+          Authorization: `Bearer ${await session.getToken()}`,
         },
-      },      // cookies: {
-      //   getAll() {
-      //     return cookieStore.getAll();
-      //   },
-      //   setAll(cookiesToSet) {
-      //     try {
-      //       cookiesToSet.forEach(({ name, value, options }) =>
-      //         cookieStore.set(name, value, options)
-      //       );
-      //     } catch {
-      //       // The `setAll` method was called from a Server Component.
-      //       // This can be ignored if you have middleware refreshing
-      //       // user sessions.
-      //     }
-      //   },
-      // },
+      }
     }
   );
 
