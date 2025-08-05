@@ -56,16 +56,24 @@ export const usersRouter = createTRPCRouter({
         message: 'You do not have permission to view all users.',
       });
     }
- 
-    const { data, error } = await ctx.supabase
-      .from('users')
-      .select('*, clients:client_id (id, name, company_name)')
-      .order('created_at', { ascending: false });
 
-    if (error) {
-      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+    try {
+      const { data, error } = await ctx.supabase
+        .from('users')
+        .select('*, clients:client_id (id, name, company_name)')
+        .order('created_at', { ascending: false });
+  
+      if (error) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+      }
+      
+      return data;
+    } catch (error) {
+      console.log('error', error);
+      throw new TRPCError(error as TRPCError);
     }
-    return data;
+
+    return [];
   }),
 
   create: protectedProcedure
