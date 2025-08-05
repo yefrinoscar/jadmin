@@ -56,14 +56,14 @@ export const TicketListItemSchema = z.object({
   source: TicketSourceEnum,
   created_at: z.string(),
   updated_at: z.string(),
-  client_id: z.string().uuid(),
+  client_id: z.string(),
   client_company_name: z.string(),
   reported_by: z.object({
-    id: z.string().uuid(),
+    id: z.string(),
     name: z.string()
   }),
   assigned_user: z.object({
-    id: z.string().uuid(),
+    id: z.string(),
     name: z.string()
   }).nullable(),
   ticket_service_tags: z.array(

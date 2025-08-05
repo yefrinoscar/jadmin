@@ -131,7 +131,7 @@ export function Sidebar() {
               {user?.emailAddresses?.[0].emailAddress}
             </p>
             <div className="mt-1">
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${userRole && roleLabels[`${userRole}`] ? roleLabels[`${userRole}`] : 'bg-blue-50 text-blue-700'}`}>
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${userRole && roleLabels[`${userRole}`] ? roleColors[`${userRole}`] : 'bg-blue-50 text-blue-700'}`}>
                 {userRole ? roleLabels[`${userRole}`] : 'Usuario'}
               </span>
             </div>

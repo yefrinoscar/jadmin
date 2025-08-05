@@ -8,6 +8,7 @@ interface SendUserAccessEmailParams {
   password: string;
   loginUrl: string;
   companyName?: string;
+  clientName?: string;
 }
 
 /**
@@ -23,6 +24,7 @@ export class EmailService {
     password,
     loginUrl,
     companyName,
+    clientName,
   }: SendUserAccessEmailParams) {
     try {
       const resend = createResendClient();
@@ -36,6 +38,7 @@ export class EmailService {
           password,
           loginUrl,
           companyName,
+          clientName,
         }) as ReactElement,
       });
       

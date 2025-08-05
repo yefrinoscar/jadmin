@@ -82,7 +82,8 @@ export const usersRouter = createTRPCRouter({
           name: z.string().min(1, 'Name is required'),
           role: UserRoleSchema,
           password: z.string().min(6, 'Password must be at least 6 characters').optional(),
-          client_id: z.string().uuid('Please select a valid client').optional()
+          client_id: z.string().uuid('Please select a valid client').optional(),
+          client_name: z.string().optional()
         })
         .refine(
           (data) => {
@@ -116,28 +117,8 @@ export const usersRouter = createTRPCRouter({
       
       try {
         let clientId = input.client_id;
-
-        if (input.role === 'client') {
-
-          const { data: newClient, error: clientError } = await ctx.supabase
-            .from('clients')
-            .insert([
-              {
-                name: input.name,
-                email: input.email,
-              },
-            ])
-            .select()
-            .single();
-
-          if (clientError) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Error creating client: ${clientError.message}`,
-            });
-          }
-          clientId = newClient?.id;
-        }
+        
+        // We no longer create a new client, we just use the selected client_id
 
         const response = await clerkClient.users.createUser({
           emailAddress: [input.email],
@@ -185,6 +166,7 @@ export const usersRouter = createTRPCRouter({
           
           console.log('Sending email to', input.email, 'with login URL', baseUrl, 'and company name', companyName);
 
+          // Use the provided client name if available, otherwise fetch it from the databas
           // Call the email API endpoint asynchronously to not block the response
           fetch(`${baseUrl}/api/email-access`, {
             method: 'POST',
@@ -195,7 +177,8 @@ export const usersRouter = createTRPCRouter({
               email: input.email,
               password: input.password,
               loginUrl: `${baseUrl}/login`,
-              companyName
+              companyName,
+              clientName: input.client_name ?? '',
             }),
           }).then(async (response) => {
             console.log('response', response);

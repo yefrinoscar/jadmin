@@ -52,18 +52,16 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
 
 
   // Create a schema that includes all fields from CreateUserInputSchema plus password
-  // and optional new client fields
   const CreateUserSchema = z.object({
     email: z.string().email('Please enter a valid email address'),
     name: z.string().min(1, 'Name is required'),
     role: UserRoleSchema,
     password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
     client_id: z.string().uuid('Please select a valid client').optional(),
-    create_new_client: z.boolean().optional(),
   })
   .refine(data => {
-    // If role is client and not creating a new client, client_id is required
-    if (data.role === 'client' && !data.create_new_client) {
+    // If role is client, client_id is required
+    if (data.role === 'client') {
       return !!data.client_id;
     }
     return true;
@@ -84,7 +82,6 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
       role: "technician",
       password: "",
       client_id: undefined,
-      create_new_client: false,
     },
   })
   
@@ -95,12 +92,7 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     defaultValue: "technician"
   })
   
-  // Watch the create_new_client field to toggle between client selection and new client creation
-  const createNewClient = useWatch({
-    control: form.control,
-    name: "create_new_client",
-    defaultValue: false
-  })
+  // No longer need to watch create_new_client field since we removed that option
   
   // Define client interface
   interface Client {
@@ -131,13 +123,21 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     // Reset any previous errors
     setFormErrors([]);
     
+    // Find the selected client name if a client_id is provided
+    let selectedClientName: string | undefined;
+    if (values.role === 'client' && values.client_id) {
+      const selectedClient = clients.find(client => client.id === values.client_id);
+      selectedClientName = selectedClient?.name;
+    }
+    
     // Prepare the data for the mutation
     const userData = {
       email: values.email,
       name: values.name,
       role: values.role,
       password: values.password,
-      client_id: values.create_new_client ? undefined : values.client_id
+      client_id: values.client_id,
+      client_name: selectedClientName
     }
     
     // Pass the data to the mutation
@@ -335,118 +335,51 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
               <div className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="create_new_client"
+                  name="client_id"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Cliente Asociado</FormLabel>
-                      <Tabs
-                        defaultValue={field.value ? "new" : "existing"}
-                        className="w-full"
-                        onValueChange={(value) => {
-                          field.onChange(value === "new");
-                          if (value === "existing") {
-                            // No need to set new_client as it's not in the schema
-                          } else {
-                            form.setValue("client_id", undefined);
-                          }
-                        }}
+                      <Select 
+                        onValueChange={field.onChange} 
+                        defaultValue={field.value}
+                        disabled={isLoadingClients}
                       >
-                        <TabsList className="grid w-full grid-cols-2">
-                          <TabsTrigger value="existing">
+                        <FormControl>
+                          <SelectTrigger>
                             <div className="flex items-center gap-2">
-                              <Building className="w-4 h-4" />
-                              Cliente Existente
+                              <Building className="w-4 h-4 text-muted-foreground" />
+                              <SelectValue placeholder="Selecciona un cliente" />
                             </div>
-                          </TabsTrigger>
-                          <TabsTrigger value="new">
-                            <div className="flex items-center gap-2">
-                              <Plus className="w-4 h-4" />
-                              Nuevo Cliente
-                            </div>
-                          </TabsTrigger>
-                        </TabsList>
-                        
-                        <TabsContent value="existing" className="pt-4">
-                          <FormField
-                            control={form.control}
-                            name="client_id"
-                            render={({ field }) => (
-                              <FormItem>
-                                <Select 
-                                  onValueChange={field.onChange} 
-                                  defaultValue={field.value}
-                                  disabled={isLoadingClients}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <div className="flex items-center gap-2">
-                                        <Building className="w-4 h-4 text-muted-foreground" />
-                                        <SelectValue placeholder="Selecciona un cliente" />
-                                      </div>
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {isLoadingClients ? (
-                                      <SelectItem value="loading" disabled>
-                                        <div className="flex items-center gap-2">
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                          Cargando clientes...
-                                        </div>
-                                      </SelectItem>
-                                    ) : clients.length === 0 ? (
-                                      <SelectItem value="none" disabled>
-                                        No hay clientes disponibles
-                                      </SelectItem>
-                                    ) : (
-                                      clients.map((client: Client) => (
-                                        <SelectItem key={client.id} value={client.id}>
-                                          <div className="flex items-center gap-2">
-                                            <Building className="w-4 h-4 text-muted-foreground" />
-                                            {client.name}{client.company_name ? ` - ${client.company_name}` : ''}
-                                          </div>
-                                        </SelectItem>
-                                      ))
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                                <FormDescription>
-                                  Selecciona el cliente al que pertenece este usuario.
-                                </FormDescription>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TabsContent>
-                        
-                        <TabsContent value="new" className="space-y-4 pt-4">
-                          <div className="space-y-4">
-                            <div className="flex items-center">
-                              <User className="mr-2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="Nombre del cliente" />
-                            </div>
-                          
-                            <div className="flex items-center">
-                              <Building className="mr-2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="Nombre de la empresa (opcional)" />
-                            </div>
-                          
-                            <div className="flex items-center">
-                              <Mail className="mr-2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="Email del cliente (opcional)" />
-                            </div>
-                          
-                            <div className="flex items-center">
-                              <Phone className="mr-2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="Teléfono del cliente (opcional)" />
-                            </div>
-                          
-                            <div className="flex items-center">
-                              <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-                              <Input placeholder="Dirección del cliente (opcional)" />
-                            </div>
-                          </div>
-                        </TabsContent>
-                      </Tabs>
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {isLoadingClients ? (
+                            <SelectItem value="loading" disabled>
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Cargando clientes...
+                              </div>
+                            </SelectItem>
+                          ) : clients.length === 0 ? (
+                            <SelectItem value="none" disabled>
+                              No hay clientes disponibles
+                            </SelectItem>
+                          ) : (
+                            clients.map((client: Client) => (
+                              <SelectItem key={client.id} value={client.id}>
+                                <div className="flex items-center gap-2">
+                                  <Building className="w-4 h-4 text-muted-foreground" />
+                                  {client.name}{client.company_name ? ` - ${client.company_name}` : ''}
+                                </div>
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Selecciona el cliente al que pertenece este usuario.
+                      </FormDescription>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />

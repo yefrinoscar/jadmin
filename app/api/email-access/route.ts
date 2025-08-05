@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   try {
     // Parse request body
     const body = await req.json();
-    const { email, password, loginUrl, companyName } = body;
+    const { email, password, loginUrl, companyName, clientName } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
       email,
       password,
       loginUrl: finalLoginUrl,
-      companyName: finalCompanyName
+      companyName: finalCompanyName,
+      clientName
     });
 
     console.log('Email result:', emailResult);

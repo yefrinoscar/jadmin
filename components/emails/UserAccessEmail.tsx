@@ -5,6 +5,7 @@ interface UserAccessEmailProps {
   password: string;
   loginUrl: string;
   companyName?: string;
+  clientName?: string;
 }
 
 export const UserAccessEmail: React.FC<UserAccessEmailProps> = ({
@@ -12,6 +13,7 @@ export const UserAccessEmail: React.FC<UserAccessEmailProps> = ({
   password,
   loginUrl,
   companyName = 'JAdmin',
+  clientName,
 }) => {
   return (
     <html>
@@ -65,6 +67,14 @@ export const UserAccessEmail: React.FC<UserAccessEmailProps> = ({
               padding: 16px;
               margin: 20px 0;
               border-left: 4px solid #4f46e5;
+            }
+            
+            .client-box {
+              background-color: #f0f9ff;
+              border-radius: 6px;
+              padding: 16px;
+              margin: 20px 0;
+              border-left: 4px solid #0ea5e9;
             }
             
             .credential-item {
@@ -133,6 +143,15 @@ export const UserAccessEmail: React.FC<UserAccessEmailProps> = ({
                 <div className="value">{password}</div>
               </div>
             </div>
+            
+            {clientName && (
+              <div className="client-box">
+                <div className="credential-item">
+                  <span className="label">Cliente asignado:</span>
+                  <div className="value">{clientName}</div>
+                </div>
+              </div>
+            )}
             
             <p>Por favor utiliza estas credenciales para iniciar sesión en tu cuenta. Por razones de seguridad, te recomendamos cambiar tu contraseña después de tu primer inicio de sesión.</p>
             
