@@ -33,10 +33,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { trpc } from "@/components/providers/trpc-provider"
 import { UpdateUserInputSchema, UserRoleSchema, USER_ROLE_LABELS, User } from "@/lib/schemas"
-import { useTRPC } from "@/trpc/client"
 import { useMutation } from "@tanstack/react-query"
+import { useTRPC } from "@/trpc/client"
 
 interface EditUserDialogProps {
   children: React.ReactNode
