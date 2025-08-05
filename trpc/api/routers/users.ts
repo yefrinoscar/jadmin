@@ -184,7 +184,7 @@ export const usersRouter = createTRPCRouter({
 
         // Send welcome email with login credentials if password was provided
         if (input.password) {
-          const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           const companyName = process.env.COMPANY_NAME || 'JAdmin';
           
           console.log('Sending email to', input.email, 'with login URL', baseUrl, 'and company name', companyName);
