@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/database.types';
 import { CreatePublicTicketSchema, TicketResponseSchema } from '@/lib/types/ticket';
 
@@ -58,16 +58,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear cliente de Supabase (anónimo - no requiere auth)
-    const supabase = createServerClient<Database>(
+    const supabase = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get() { return undefined },
-          set() {},
-          remove() {},
-        },
-      }
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
     // Parse JSON data
