@@ -62,6 +62,10 @@ export const usersRouter = createTRPCRouter({
         .from('users')
         .select('*, clients:client_id (id, name, company_name)')
         .order('created_at', { ascending: false });
+
+        console.warn('data', data)
+        console.warn('data1', ctx.supabase)
+        console.warn('errortry', error)
   
       if (error) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
@@ -69,7 +73,7 @@ export const usersRouter = createTRPCRouter({
       
       return data;
     } catch (error) {
-      console.log('error', error);
+      console.warn('error', error);
       throw new TRPCError(error as TRPCError);
     }
   }),
