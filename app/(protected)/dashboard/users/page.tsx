@@ -1,6 +1,6 @@
-import { HydrateClient, prefetch, trpc } from "@/trpc/server";
-import { Suspense } from "react";
-import { UsersTableSkeleton } from "./_components/users-skeleton";
+import { HydrateClient } from "@/trpc/server";
+// import { Suspense } from "react";
+// import { UsersTableSkeleton } from "./_components/users-skeleton";
 import { UsersContent } from "./_components/users-content";
 
 // Client component that receives hydrated data
@@ -25,9 +25,9 @@ export default function UsersPage() {
       </div>
 
       <HydrateClient>
-        <Suspense fallback={<UsersTableSkeleton />}>
+        {/* <Suspense fallback={<UsersTableSkeleton />}> */}
           <UsersContent />
-        </Suspense>
+        {/* </Suspense> */}
       </HydrateClient>
     </div>
   );
