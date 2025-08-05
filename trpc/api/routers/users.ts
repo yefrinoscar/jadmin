@@ -56,6 +56,13 @@ export const usersRouter = createTRPCRouter({
         message: 'You do not have permission to view all users.',
       });
     }
+    
+    if(ctx.supabase === undefined) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Supabase client is undefined',
+      });
+    }
  
     const { data, error } = await ctx.supabase
       .from('users')
