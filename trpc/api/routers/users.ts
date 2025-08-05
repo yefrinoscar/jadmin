@@ -62,10 +62,6 @@ export const usersRouter = createTRPCRouter({
         .from('users')
         .select('*, clients:client_id (id, name, company_name)')
         .order('created_at', { ascending: false });
-
-        console.warn('data', data)
-        console.warn('data1', ctx.supabase)
-        console.warn('errortry', error)
   
       if (error) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
@@ -209,7 +205,7 @@ export const usersRouter = createTRPCRouter({
               console.error('Failed to send user access email:', errorData.error);
             }
           }).catch(error => {
-            console.error('Error calling email API:', error);
+            console.warn('Error calling email API:', error);
           });
         }
         
