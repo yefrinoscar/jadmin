@@ -23,10 +23,7 @@ export const createTRPCContext = async () => {
   // Create Supabase client with proper cookie handling
   const supabase =  createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      accessToken: async () => session.getToken() ?? null
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
   return createInnerTRPCContext({
