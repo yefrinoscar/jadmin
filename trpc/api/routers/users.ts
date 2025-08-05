@@ -72,8 +72,6 @@ export const usersRouter = createTRPCRouter({
       console.log('error', error);
       throw new TRPCError(error as TRPCError);
     }
-
-    return [];
   }),
 
   create: protectedProcedure
