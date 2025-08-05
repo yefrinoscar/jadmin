@@ -16,6 +16,7 @@ const enforceUserIsAuthed = t.middleware(async ({ ctx, next }) => {
   return next({
     ctx: {
       auth: ctx.auth,
+      supabase: ctx.supabase,
     },
   })
 });
