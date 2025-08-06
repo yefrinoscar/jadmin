@@ -108,14 +108,18 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
   
   // Use React Query's useMutation with tRPC client
   const { mutateAsync: createUser, error, isPending, reset } = useMutation(trpc.users.create.mutationOptions({
-    onSuccess: () => {
+    onSuccess: (data) => {
       setOpen(false)
       form.reset()
       queryClient.invalidateQueries()
       onUserCreated?.()
     },
-    onError: (error) => {
-      console.error("Error creating user:", error)
+    onError: (error: any) => {
+      // Handle thrown errors from the API
+      console.log("Error creating user:", error)
+      // Extract the error message from the TRPCError
+      const errorMessage = error?.message || 'Error al crear el usuario'
+      setFormErrors([errorMessage])
     },
   }))
 
@@ -149,6 +153,7 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     if (!newOpen) {
       form.reset()
       reset()
+      setFormErrors([])
     }
   }
 
@@ -167,6 +172,22 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
             Agrega un nuevo miembro del equipo al sistema. Asegúrate de asignar el rol apropiado.
           </DialogDescription>
         </DialogHeader>
+        
+        {formErrors.length > 0 && (
+          <div className="bg-destructive/15 border border-destructive text-destructive rounded-md p-3 mb-4">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+              <div>
+                <h4 className="font-medium">Error al crear usuario</h4>
+                <ul className="list-disc list-inside text-sm mt-1">
+                  {formErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
