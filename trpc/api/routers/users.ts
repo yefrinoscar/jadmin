@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import { UserErrorCode, USER_ERROR_MESSAGES } from '../../../lib/errors';
 import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../../init';
 import { EmailService } from '../../../lib/services/email-service';
@@ -103,23 +104,36 @@ export const usersRouter = createTRPCRouter({
       if (!['superadmin', 'admin'].includes(role)) {
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: 'You do not have permission to create users.',
+          message: USER_ERROR_MESSAGES[UserErrorCode.INSUFFICIENT_PERMISSIONS],
         });
       }
 
       if (role !== 'superadmin' && input.role === 'superadmin') {
         throw new TRPCError({
           code: 'FORBIDDEN',
-          message: 'Only a superadmin can create superadmin users.',
+          message: USER_ERROR_MESSAGES[UserErrorCode.INSUFFICIENT_PERMISSIONS],
         });
       }
 
+      let clientId = input.client_id;
       
-      try {
-        let clientId = input.client_id;
-        
-        // We no longer create a new client, we just use the selected client_id
+      console.log('User created:', input);
 
+      // Check if user already exists in the database
+      const { data: existingUser } = await ctx.supabase
+        .from('users')
+        .select('email')
+        .eq('email', input.email)
+        .single();
+
+      if (existingUser) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: USER_ERROR_MESSAGES[UserErrorCode.EMAIL_EXISTS],
+        });
+      }
+
+      try {
         const response = await clerkClient.users.createUser({
           emailAddress: [input.email],
           password: input.password,
@@ -128,12 +142,14 @@ export const usersRouter = createTRPCRouter({
             is_disabled: false,
             ...(input.role === 'client' && clientId ? { client_id: clientId } : {}),
           }
-        })  
+        })
+        
+        console.log('User created response:', response);
 
         if (!response.id) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error registering user`,
+            message: USER_ERROR_MESSAGES[UserErrorCode.REGISTRATION_FAILED],
           });
         }
 
@@ -153,11 +169,11 @@ export const usersRouter = createTRPCRouter({
         if (error) {
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
-            message: `Error creating user in database: ${error.message}`,
+            message: USER_ERROR_MESSAGES[UserErrorCode.DATABASE_ERROR](error.message),
           });
         }
 
-        console.log('User created successfully:', data, input.password);
+        console.log('User created successfully:', data);
 
         // Send welcome email with login credentials if password was provided
         if (input.password) {
@@ -166,7 +182,7 @@ export const usersRouter = createTRPCRouter({
           
           console.log('Sending email to', input.email, 'with login URL', baseUrl, 'and company name', companyName);
 
-          // Use the provided client name if available, otherwise fetch it from the databas
+          // Use the provided client name if available, otherwise fetch it from the database
           // Call the email API endpoint asynchronously to not block the response
           fetch(`${baseUrl}/api/email-access`, {
             method: 'POST',
@@ -186,6 +202,7 @@ export const usersRouter = createTRPCRouter({
             if (!response.ok) {
               const errorData = await response.json();
               console.error('Failed to send user access email:', errorData.error);
+              // Not throwing error here as this is async and we don't want to block the response
             }
           }).catch(error => {
             console.warn('Error calling email API:', error);
@@ -194,11 +211,10 @@ export const usersRouter = createTRPCRouter({
         
         return { success: true, user: data };
       } catch (error) {
-        if (error instanceof TRPCError) throw error;
-
+        console.error('Error creating user:', error);
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'An unknown error occurred',
+          message: USER_ERROR_MESSAGES[UserErrorCode.REGISTRATION_FAILED],
         });
       }
     }),
@@ -441,7 +457,7 @@ export const usersRouter = createTRPCRouter({
         if (!authUserData) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error fetching user info`,
+            message: USER_ERROR_MESSAGES[UserErrorCode.USER_NOT_FOUND_IN_AUTHENTICATION],
           });
         }
 
@@ -478,9 +494,35 @@ export const usersRouter = createTRPCRouter({
       } catch (error) {
         if (error instanceof TRPCError) throw error;
 
+        // Handle specific error types
+        if (error instanceof Error) {
+          // Check for common error patterns
+          if (error.message.includes('already exists')) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: USER_ERROR_MESSAGES[UserErrorCode.EMAIL_EXISTS],
+            });
+          }
+          
+          if (error.message.includes('password')) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: USER_ERROR_MESSAGES[UserErrorCode.PASSWORD_TOO_WEAK],
+            });
+          }
+          
+          if (error.message.includes('email')) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: USER_ERROR_MESSAGES[UserErrorCode.INVALID_EMAIL],
+            });
+          }
+        }
+
+        // Default unknown error
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'An unknown error occurred',
+          message: USER_ERROR_MESSAGES[UserErrorCode.UNKNOWN_ERROR](error instanceof Error ? error.message : 'Error desconocido'),
         });
       }
     }),

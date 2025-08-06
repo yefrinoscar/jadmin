@@ -1,10 +1,9 @@
 "use client";
 
 import { useTRPC } from "@/trpc/client";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { UsersTable } from "./users-table";
 import { useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
 import { ClerkUser } from "@/lib/schemas";
 
 export function UsersContent() {
