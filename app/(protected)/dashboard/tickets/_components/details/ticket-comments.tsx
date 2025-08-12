@@ -11,23 +11,16 @@ import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Comment } from "@/trpc/api/routers/comments"
 
-interface Comment {
-  id: string
-  user_name: string
-  content: string
-  created_at: string
-  user_role: 'admin' | 'technician' | 'client'
-  photo_urls?: string[] | null
-}
 
-interface TicketCommentsProps {
+export interface TicketCommentsProps {
   ticket: TicketListItem
   ticketWithComments: Comment[] | undefined
   newComment: string
   setNewComment: (comment: string) => void
   isSubmittingComment: boolean
-  handleAddComment: (e: React.FormEvent, photoUrls?: string[]) => Promise<void>
+  handleAddComment: (e: React.FormEvent, files?: File[]) => Promise<void>
 }
 
 export function TicketComments({
@@ -64,11 +57,8 @@ export function TicketComments({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Here you would upload the files to your storage service (e.g., Supabase Storage)
-    // and get the URLs to pass to handleAddComment
-    // For now, we'll just pass the preview URLs as a placeholder
-    
-    await handleAddComment(e, previewUrls)
+    // Pass the actual files to handleAddComment for processing
+    await handleAddComment(e, selectedFiles)
     
     // Clear the selected files and previews after submission
     previewUrls.forEach(url => URL.revokeObjectURL(url))
@@ -139,24 +129,43 @@ export function TicketComments({
                     <div className="bg-muted/30 rounded-lg p-3 relative group-hover:bg-muted/50 transition-colors">
                       <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
                       
-                      {/* Display photos if any */}
+                      {/* Display attachments if any */}
                       {comment.photo_urls && comment.photo_urls.length > 0 && (
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                          {comment.photo_urls.map((url, i) => (
-                            <a 
-                              key={i} 
-                              href={url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="block relative aspect-square rounded-md overflow-hidden border bg-muted/20 hover:opacity-90 transition-opacity"
-                            >
-                              <img 
-                                src={url} 
-                                alt={`Attachment ${i+1}`} 
-                                className="object-cover w-full h-full"
-                              />
-                            </a>
-                          ))}
+                          {comment.photo_urls.map((url, i) => {
+                            const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
+                            const fileName = url.split('/').pop() || `File ${i+1}`;
+                            
+                            return isImage ? (
+                              // Display images inline
+                              <a 
+                                key={i} 
+                                href={url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="block relative aspect-square rounded-md overflow-hidden border bg-muted/20 hover:opacity-90 transition-opacity"
+                              >
+                                <img 
+                                  src={url} 
+                                  alt={`Attachment ${i+1}`} 
+                                  className="object-cover w-full h-full"
+                                />
+                              </a>
+                            ) : (
+                              // Display other file types as download links
+                              <a 
+                                key={i} 
+                                href={url} 
+                                download={fileName}
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="flex items-center p-3 rounded-md border bg-muted/20 hover:bg-muted/40 transition-colors"
+                              >
+                                <Paperclip className="h-4 w-4 mr-2 flex-shrink-0" />
+                                <span className="text-xs truncate">{fileName}</span>
+                              </a>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

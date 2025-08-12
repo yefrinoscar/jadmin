@@ -16,7 +16,7 @@ import {
   TicketDetails, 
   SerialNumbers, 
   TicketComments, 
-  TicketHistory 
+  TicketHistory
 } from "./details"
 
 interface TicketDrawerProps {
@@ -113,34 +113,58 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   }))
   
   // Handle comment submission
-  const handleAddComment = async (e: React.FormEvent, photoUrls: string[] = []) => {
+  const handleAddComment = async (e: React.FormEvent, files: File[] = []) => {
     e.preventDefault()
-    if (!ticket?.id || (!newComment.trim() && photoUrls.length === 0)) return
+    if (!ticket?.id || (!newComment.trim() && files.length === 0)) return
     
     try {
       setIsSubmittingComment(true)
       
-      // In a real implementation, you would first upload the photos to your storage service
-      // and then use the returned URLs. For now, we're just using the provided URLs directly.
-      // Example of uploading to Supabase Storage:
-      // const uploadedUrls = await Promise.all(photoFiles.map(async (file) => {
-      //   const fileExt = file.name.split('.').pop()
-      //   const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`
-      //   const { data, error } = await supabase.storage
-      //     .from('ticket-attachments')
-      //     .upload(`${ticket.id}/${fileName}`, file)
-      //   if (error) throw error
-      //   return supabase.storage.from('ticket-attachments').getPublicUrl(data.path).data.publicUrl
-      // }))
+      // Convert files to base64 format for sending to the backend
+      const filePromises = files.map(async (file) => {
+        const base64Data = await fileToBase64(file);
+        return {
+          data: base64Data,
+          name: file.name,
+          type: file.type
+        };
+      });
       
+      const preparedFiles = await Promise.all(filePromises);
+      
+      // Add the comment with the files - backend will handle uploads
       await addComment({
         ticket_id: ticket.id,
         content: newComment.trim(),
-        photo_urls: photoUrls
-      })
+        files: preparedFiles
+      });
+      
+      // Clear the comment input
+      setNewComment('');
+      
+      // Invalidate queries to refresh the comments list
+      queryClient.invalidateQueries({
+        queryKey: ["comments", "getByTicketId", ticket.id],
+      });
     } finally {
-      setIsSubmittingComment(false)
+      setIsSubmittingComment(false);
     }
+  }
+  
+  // Helper function to convert File to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        // Extract the base64 data from the result
+        const base64String = reader.result as string;
+        // Remove the data URL prefix (e.g., 'data:image/jpeg;base64,')
+        const base64Data = base64String.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = (error) => reject(error);
+    });
   }
   
   // Handle ticket update

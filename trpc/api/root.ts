@@ -5,6 +5,7 @@ import { serviceTagsRouter } from './routers/service-tags'
 import { ticketsRouter } from './routers/tickets'
 import { authRouter } from './routers/auth'
 import { commentsRouter } from './routers/comments'
+import { storageRouter } from './routers/storage'
 
 export const appRouter = createTRPCRouter({
   users: usersRouter,
@@ -12,7 +13,8 @@ export const appRouter = createTRPCRouter({
   serviceTags: serviceTagsRouter,
   tickets: ticketsRouter,
   auth: authRouter,
-  comments: commentsRouter
+  comments: commentsRouter,
+  storage: storageRouter
 })
 
 export type AppRouter = typeof appRouter

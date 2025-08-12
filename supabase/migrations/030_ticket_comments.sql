@@ -28,7 +28,7 @@ CREATE TRIGGER update_ticket_comments_updated_at
 -- Function to add a comment to a ticket and record in history
 CREATE OR REPLACE FUNCTION add_ticket_comment(
     p_ticket_id TEXT,
-    p_user_id UUID,
+    p_user_id TEXT,
     p_content TEXT,
     p_photo_urls TEXT[] DEFAULT NULL
 )
@@ -80,8 +80,8 @@ $$ LANGUAGE plpgsql;
 
 -- Function to soft-delete a comment and record in history
 CREATE OR REPLACE FUNCTION delete_ticket_comment(
-    p_comment_id UUID,
-    p_user_id UUID
+    p_comment_id TEXT,
+    p_user_id TEXT
 )
 RETURNS BOOLEAN AS $$
 DECLARE
