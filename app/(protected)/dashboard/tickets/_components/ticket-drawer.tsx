@@ -10,7 +10,7 @@ import { makeQueryClient } from "@/trpc/query-client"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-import { TicketListItem } from "@/trpc/api/routers/tickets"
+import { TicketListItem, TicketHistoryItem } from "@/trpc/api/routers/tickets"
 import { 
   TicketHeader, 
   TicketDetails, 
@@ -43,7 +43,7 @@ interface Comment {
 }
 
 // Define history item type that matches what comes from the API
-interface TicketHistoryItem {
+interface TicketHistoryDisplay {
   type: string
   description: string
   timestamp: string
@@ -51,8 +51,6 @@ interface TicketHistoryItem {
     id: string
     name: string
   }
-  from_value?: string
-  to_value?: string
 }
 
 export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) {
@@ -84,7 +82,11 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   // const queryOptions = trpc.tickets..queryOptions
   // const { data: ticketWithUpdates, refetch } = useQuery({ ...queryOptions({ clientId: ticket?.id || '' }), enabled: !!ticket?.id })
 
-  const { data: ticketWithComments } = useQuery({ ...trpc.comments.getByTicketId.queryOptions({ ticket_id: ticket?.id || '' }), enabled: !!ticket?.id })
+  // Get ticket comments
+  const { data: ticketWithComments, isLoading: isLoadingComments } = useQuery({ ...trpc.comments.getByTicketId.queryOptions({ ticket_id: ticket?.id || '' }), enabled: !!ticket?.id })
+  
+  // Get ticket history
+  const { data: ticketHistory, isLoading: isLoadingHistory } = useQuery({ ...trpc.tickets.getTicketHistory.queryOptions({ id: ticket?.id || '' }), enabled: !!ticket?.id })
   const { data: serialNumbers } = useQuery({ ...trpc.serviceTags.getByTicketId.queryOptions({ ticketId: ticket?.id || '' }), enabled: !!ticket?.id })
 
   // Fetch users for dropdown
@@ -313,10 +315,11 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
           </TabsContent>
           
           <TabsContent value="history" className="space-y-4 px-6 mt-0">
-            {/* <TicketHistory 
+            <TicketHistory 
               ticket={ticket}
               ticketHistory={ticketHistory}
-            /> */}
+              isLoading={isLoadingHistory}
+            />
           </TabsContent>
         </Tabs>
       </SheetContent>

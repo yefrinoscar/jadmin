@@ -17,6 +17,22 @@ const IdParamSchema = z.object({
   id: z.string().regex(/^TK-\d{6}$/, "Invalid ticket ID format")
 });
 
+// Define schema for ticket history items
+const TicketHistoryItemSchema = z.object({
+  id: z.string().uuid(),
+  ticket_id: z.string(),
+  user_id: z.string(),
+  message: z.string(),
+  created_at: z.string(),
+  user_name: z.string().optional(),
+  type: z.string().optional()
+});
+
+const TicketHistoryOutputSchema = z.array(TicketHistoryItemSchema);
+
+// Export type for use in components
+export type TicketHistoryItem = z.infer<typeof TicketHistoryItemSchema>;
+
 const ClientIdParamSchema = z.object({
   clientId: z.string().uuid("Invalid client ID")
 });
@@ -81,6 +97,39 @@ const TicketsListOutputSchema = z.array(TicketListItemSchema);
 export type TicketListItem = z.infer<typeof TicketListItemSchema>;
 
 export const ticketsRouter = createTRPCRouter({
+  // Get ticket history
+  getTicketHistory: protectedProcedure
+    .input(IdParamSchema)
+    .query(async ({ ctx, input }) => {
+      // Get ticket history from ticket_updates table with user information
+      const { data, error } = await ctx.supabase
+        .from('ticket_updates')
+        .select(`
+          *,
+          users:user_id (name)
+        `)
+        .eq('ticket_id', input.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to fetch ticket history: ${error.message}`,
+        cause: error
+      });
+
+      // Transform the data to match the schema
+      const transformedData = data.map(item => ({
+        ...item,
+        user_name: item.users?.name || 'Unknown User',
+        // Determine the type based on the message content
+        type: item.message.includes('status') ? 'status_change' :
+              item.message.includes('Comment') ? 'comment_added' :
+              item.message.includes('assigned') ? 'assigned_change' :
+              'other'
+      }));
+
+      return TicketHistoryOutputSchema.parse(transformedData);
+    }),
   // NOTE: The following authorization rules are assumptions and may need to be refined
   // based on specific business logic for client users.
   getAll: protectedProcedure.query(async ({ ctx }) => {

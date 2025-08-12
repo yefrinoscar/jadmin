@@ -13,29 +13,28 @@ import {
   Hash 
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TicketListItem } from "@/trpc/api/routers/tickets"
+import { TicketListItem, TicketHistoryItem } from "@/trpc/api/routers/tickets"
 import { TICKET_STATUS_LABELS } from "@/lib/schemas/ticket"
 
-interface TicketHistoryItem {
+// Local interface for transformed history items for display
+interface TicketHistoryDisplay {
+  id: string
   type: string
-  description: string
+  message: string
   timestamp: string
-  user?: {
-    id: string
-    name: string
-  }
-  from_value?: string
-  to_value?: string
+  userName: string
 }
 
 interface TicketHistoryProps {
   ticket: TicketListItem
-  ticketHistory: TicketHistoryItem[]
+  ticketHistory?: TicketHistoryItem[]
+  isLoading?: boolean
 }
 
 export function TicketHistory({
   ticket,
-  ticketHistory
+  ticketHistory,
+  isLoading = false
 }: TicketHistoryProps) {
   return (
     <Card>
@@ -52,7 +51,7 @@ export function TicketHistory({
             <div className="bg-blue-50 w-10 h-10 rounded-lg flex items-center justify-center mx-auto mb-2">
               <Activity className="h-5 w-5 text-blue-600" />
             </div>
-            <p className="text-lg font-bold">{ticketHistory.length}</p>
+            <p className="text-lg font-bold">{ticketHistory?.length || 0}</p>
             <p className="text-xs text-muted-foreground">Eventos</p>
           </div>
           <div className="border rounded-lg p-4 text-center hover:bg-muted/20 transition-colors">
@@ -60,7 +59,7 @@ export function TicketHistory({
               <Calendar className="h-5 w-5 text-orange-600" />
             </div>
             <p className="text-lg font-bold">
-              {ticket.status === 'closed' 
+              {ticket.status === 'closed' && ticket.updated_at
                 ? Math.ceil((new Date(ticket.updated_at).getTime() - new Date(ticket.created_at).getTime()) / (1000 * 60 * 60 * 24))
                 : Math.ceil((new Date().getTime() - new Date(ticket.created_at).getTime()) / (1000 * 60 * 60 * 24))
               }
@@ -79,10 +78,13 @@ export function TicketHistory({
         </div>
         
         {/* Timeline events */}
-        {ticketHistory.length > 0 ? (
+        {isLoading ? (
+          <div className="py-8 text-center text-muted-foreground">
+            <p>Cargando historial...</p>
+          </div>
+        ) : ticketHistory && ticketHistory.length > 0 ? (
           <div className="space-y-4">
-            {/* Commented out as it was in the original file */}
-            {/* {ticketHistory.map((historyItem: TicketHistoryItem, index) => {
+            {ticketHistory.map((historyItem: TicketHistoryItem) => {
               // Determine icon and color based on history type
               let icon = <Activity className="h-4 w-4" />;
               let bgColor = "bg-blue-50";
@@ -111,27 +113,25 @@ export function TicketHistory({
               }
               
               return (
-                <div key={historyItem.type} className="flex gap-3">
-                  <div className={`${bgColor} p-2 rounded-full h-8 w-8 flex items-center justify-center flex-shrink-0`}>
-                    <div className={textColor}>{icon}</div>
+                <div key={historyItem.id} className="flex gap-3">
+                  <div className={`${bgColor} ${textColor} w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1`}>
+                    {icon}
                   </div>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{historyItem.description}</span>
+                  <div className="flex-1">
+                    <p className="text-sm">{historyItem.message}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs font-medium">{historyItem.user_name}</span>
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(historyItem.timestamp), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(historyItem.created_at), { addSuffix: true })}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {historyItem.user?.name || 'Sistema'}
-                    </p>
                   </div>
                 </div>
               );
-            })} */}
+            })}
           </div>
         ) : (
-          <div className="text-center py-8 text-muted-foreground">
+          <div className="py-8 text-center text-muted-foreground">
             <p>No hay actividad registrada para este ticket.</p>
           </div>
         )}
