@@ -49,15 +49,97 @@ export function AssignUserPopover({
 
   const { mutateAsync: updateTicket } = useMutation(
     trpc.tickets.update.mutationOptions({
+      onMutate: async (newData) => {
+        // Optimistic update
+        setIsUpdating(true);
+        
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries({
+          queryKey: ["tickets", "all"],
+        });
+        
+        // Snapshot the previous value
+        const previousTickets = queryClient.getQueryData([
+          "tickets",
+          "all",
+        ]);
+        
+        // Find the user to be assigned
+        const userId = newData.assigned_to;
+        const assignedUser = userId 
+          ? assignableUsers?.find(u => u.id === userId) || null
+          : null;
+        
+        // Convert to full UserType for the callback (add missing fields)
+        const fullUserType = assignedUser ? {
+          ...assignedUser,
+          auth_id: null, // Add the missing auth_id field
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } : null;
+        
+        // Optimistically update the cache
+        queryClient.setQueryData([
+          "tickets",
+          "all",
+        ], (old: any) => {
+          // Handle both array and paginated data structures
+          if (!old) return old;
+          
+          // If it's an array
+          if (Array.isArray(old)) {
+            return old.map((ticket) => 
+              ticket.id === newData.id 
+                ? { ...ticket, assigned_to: fullUserType }
+                : ticket
+            );
+          }
+          
+          // If it's paginated data
+          if (old.pages) {
+            return {
+              ...old,
+              pages: old.pages.map((page: any) => ({
+                ...page,
+                tickets: page.tickets.map((ticket: any) =>
+                  ticket.id === newData.id
+                    ? { ...ticket, assigned_to: fullUserType }
+                    : ticket
+                ),
+              })),
+            };
+          }
+          
+          return old;
+        });
+        
+        // Call the callback for parent component updates
+        onAssignmentChange?.(fullUserType);
+        
+        return { previousTickets };
+      },
       onSuccess: () => {
         toast.success("Asignación de ticket actualizada exitosamente");
-        queryClient.invalidateQueries(trpc.tickets.getAll.queryOptions());
         setOpen(false);
         setIsUpdating(false);
       },
-      onError: (error) => {
+      onError: (error, newData, context) => {
+        // Revert optimistic update on error
+        if (context?.previousTickets) {
+          queryClient.setQueryData([
+            "tickets",
+            "all",
+          ], context.previousTickets);
+        }
+        
         toast.error("Error al actualizar la asignación: " + error.message);
         setIsUpdating(false);
+      },
+      onSettled: () => {
+        // Always refetch after error or success
+        queryClient.invalidateQueries({
+          queryKey: ["tickets", "all"],
+        });
       }
     })
   );
@@ -65,31 +147,13 @@ export function AssignUserPopover({
   const handleAssignUser = async (userId: string | null) => {
     if (isUpdating) return;
     
-    setIsUpdating(true);
-    
-    try {
-      await updateTicket({
-        id: ticketId,
-        assigned_to: userId,
-      });
-      
-      // Find the user and call the callback for optimistic updates
-      const assignedUser = userId 
-        ? assignableUsers?.find(u => u.id === userId) || null
-        : null;
-      
-      // Convert to full UserType for the callback (add missing fields)
-      const fullUserType = assignedUser ? {
-        ...assignedUser,
-        auth_id: null, // Add the missing auth_id field
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } : null;
-      
-      onAssignmentChange?.(fullUserType);
-    } catch (error) {
+    // The mutation will handle setting isUpdating and optimistic updates
+    await updateTicket({
+      id: ticketId,
+      assigned_to: userId,
+    }).catch((error) => {
       console.error("Error assigning user:", error);
-    }
+    });
   };
 
   const getCurrentUserDisplay = () => {

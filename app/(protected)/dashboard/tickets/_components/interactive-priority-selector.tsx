@@ -13,8 +13,7 @@ import { cn } from "@/lib/utils"
 import { TICKET_PRIORITY_LABELS } from "@/lib/schemas"
 import { toast } from "sonner"
 import { useTRPC } from "@/trpc/client"
-import { useMutation } from "@tanstack/react-query"
-import { makeQueryClient } from "@/trpc/query-client"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Ticket } from "@/lib/schemas"
 
 const priorityOptions = [
@@ -58,17 +57,10 @@ export function InteractivePrioritySelector({
   const [optimisticPriority, setOptimisticPriority] = useState(currentPriority)
   const [isUpdating, setIsUpdating] = useState(false)
   const trpc = useTRPC()
-  const queryClient = makeQueryClient()
+  const queryClient = useQueryClient()
 
-  // Using React Query's useMutation hook with a mutationFn that calls the tRPC endpoint directly via fetch
-  const { mutate } = useMutation({
-    mutationFn: (data: { id: string; priority: string }) => {
-      return fetch('/api/trpc/tickets.update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: data })
-      }).then(res => res.json())
-    },
+  // Using tRPC mutation with proper pattern
+  const { mutate } = useMutation(trpc.tickets.update.mutationOptions({
     onMutate: async (newData) => {
       // Optimistic update
       setIsUpdating(true)
@@ -131,7 +123,7 @@ export function InteractivePrioritySelector({
         queryKey: ["tickets", "all"],
       })
     }
-  });
+  }));
 
   const handlePriorityChange = (newPriority: string) => {
     if (newPriority === optimisticPriority || disabled || isUpdating) return

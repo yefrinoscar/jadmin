@@ -18,14 +18,30 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
 
 export const createTRPCContext = async () => {
   const session = await auth()
-  const user = await currentUser()  
+  const user = await currentUser()
+
+  console.log(await session.getToken())
 
   // Create Supabase client with proper cookie handling
-  const supabase =  createClient(
+  const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      accessToken: async () => session.getToken() ?? null
+      /* global: {
+        fetch: async (url, options = {}) => {
+          const clerkToken = await session.getToken();
+          const headers = new Headers(options.headers);
+          headers.set('Authorization', `Bearer ${clerkToken}`);
+          return fetch(url, { ...options, headers });
+        }
+      }, */
+      accessToken: async () => (await session.getToken()) ?? null
+      
+      /* global: {
+        headers: {
+          Authorization: `Bearer ${session.getToken()}`
+        },
+      }, */
     }
   );
 

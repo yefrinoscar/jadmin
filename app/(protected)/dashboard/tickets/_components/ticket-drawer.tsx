@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
-import { useQuery, useMutation } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTRPC } from "@/trpc/client"
 import { makeQueryClient } from "@/trpc/query-client"
 
@@ -75,7 +75,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   const [isSubmittingSerialNumber, setIsSubmittingSerialNumber] = useState(false)
 
   const trpc = useTRPC()
-  const queryClient = makeQueryClient()
+  const queryClient = useQueryClient();
   
   console.log("ticket", ticket)
   // Fetch ticket updates/comments
@@ -145,9 +145,8 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
       setNewComment('');
       
       // Invalidate queries to refresh the comments list
-      queryClient.invalidateQueries({
-        queryKey: ["comments", "getByTicketId", ticket.id],
-      });
+      queryClient.invalidateQueries(trpc.comments.getByTicketId.queryOptions({ ticket_id: ticket.id }));
+
     } finally {
       setIsSubmittingComment(false);
     }

@@ -98,7 +98,7 @@ export const UpdateTicketSchema = z.object({
   description: z.string().min(1, "Description cannot be empty").optional(),
   status: TicketStatusEnum.optional(),
   priority: TicketPriorityEnum.optional(),
-  assigned_to: z.string().uuid("Invalid user ID").nullable().optional(),
+  assigned_to: z.string().nullable().optional(), 
   client_id: z.string().uuid("Invalid client ID").optional(),
   source: TicketSourceEnum.optional(),
   photo_url: z.string().url("Please enter a valid URL").nullable().optional(),

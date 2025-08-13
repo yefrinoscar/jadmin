@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, protectedProcedure } from '../../init';
 import { z } from 'zod';
+import { base64ToFile } from '../../../app/api/public-tickets/utils';
 
 // Define schemas
 const CommentIdSchema = z.object({
@@ -75,19 +76,23 @@ export const commentsRouter = createTRPCRouter({
         try {
           // Upload each file to Supabase Storage
           const uploadPromises = input.files.map(async (file) => {
-            // Convert base64 to buffer
-            const buffer = Buffer.from(file.data, 'base64');
+            // Convert base64 to File object using the base64ToFile function
+            const fileObj = await base64ToFile(file.data, file.name);
+            
+            // Convert File to buffer for storage
+            const arrayBuffer = await fileObj.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
             
             // Generate a unique filename
             const fileExt = file.name.split('.').pop() || 'file';
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-            const filePath = `${input.ticket_id}/${fileName}`;
+            const filePath = `/tickets-comments/${input.ticket_id}/${fileName}`;
             
             // Upload file to Supabase Storage
             const { data, error } = await ctx.supabase.storage
-              .from('images/tickets-comments')
+              .from('images')
               .upload(filePath, buffer, {
-                contentType: file.type,
+                contentType: fileObj.type,
                 upsert: true
               });
               
@@ -97,7 +102,7 @@ export const commentsRouter = createTRPCRouter({
             
             // Get public URL for the uploaded file
             const { data: urlData } = ctx.supabase.storage
-              .from('images/tickets-comments')
+              .from('images')
               .getPublicUrl(data.path);
               
             return urlData.publicUrl;

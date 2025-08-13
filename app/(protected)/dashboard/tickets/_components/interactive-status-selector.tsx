@@ -14,8 +14,7 @@ import { useTRPC } from "@/trpc/client"
 import { cn } from "@/lib/utils"
 import { TICKET_STATUS_LABELS, TICKET_STATUS_TABLE_LABELS } from "@/lib/schemas"
 import { toast } from "sonner"
-import { useMutation } from "@tanstack/react-query"
-import { makeQueryClient } from "@/trpc/query-client"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Ticket } from "@/lib/schemas"
 
 const statusOptions = [
@@ -44,17 +43,10 @@ export function InteractiveStatusSelector({
   const [isUpdating, setIsUpdating] = useState(false)
 
   const trpc = useTRPC()
-  const queryClient = makeQueryClient()
+  const queryClient = useQueryClient()
   
-  // Using React Query's useMutation hook with a mutationFn that calls the tRPC endpoint directly via fetch
-  const { mutate } = useMutation({
-    mutationFn: (data: { id: string; status: string }) => {
-      return fetch('/api/trpc/tickets.update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: data })
-      }).then(res => res.json())
-    },
+  // Using tRPC mutation with proper pattern
+  const { mutate } = useMutation(trpc.tickets.update.mutationOptions({
     onMutate: async (newData) => {
       // Optimistic update
       setIsUpdating(true)
@@ -66,57 +58,65 @@ export function InteractiveStatusSelector({
       })
       
       // Snapshot the previous value
-      const previousTickets = queryClient.getQueryData([
-        "tickets",
-        "all",
-      ])
+      const previousTickets = queryClient.getQueryData(["tickets", "all"])
       
-      queryClient.setQueryData([
-        "tickets",
-        "all",
-      ], (old: Ticket[]) => {
-        if (!old) return old
-        return old.map((ticket) => 
-          ticket.id === ticketId 
-            ? { ...ticket, status: newData.status }
-            : ticket
-        )
+      // Update the cache with optimistic data
+      queryClient.setQueryData(["tickets", "all"], (oldData: any) => {
+        if (!oldData) return oldData
+        
+        // Handle both array and paginated data structures
+        if (Array.isArray(oldData)) {
+          return oldData.map((ticket: Ticket) => 
+            ticket.id === newData.id 
+              ? { ...ticket, status: newData.status as Ticket['status'] }
+              : ticket
+          )
+        } else if (oldData.pages) {
+          // Handle paginated data
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page: any) => ({
+              ...page,
+              items: page.items.map((ticket: Ticket) =>
+                ticket.id === newData.id
+                  ? { ...ticket, status: newData.status as Ticket['status'] }
+                  : ticket
+              ),
+            })),
+          }
+        }
+        
+        return oldData
       })
 
       return { previousTickets }
     },
-    onError: (err, newData, context) => {
+    onError: (error, newData, context: any) => {
       // Revert optimistic update on error
       setOptimisticStatus(currentStatus)
       setIsUpdating(false)
       
       if (context?.previousTickets) {
-        queryClient.setQueryData([
-          "tickets",
-          "all",
-        ], context.previousTickets)
+        queryClient.setQueryData(["tickets", "all"], context.previousTickets)
       }
       
-      toast.error("Error al actualizar el estado", {
-        description: "No se pudo cambiar el estado del ticket. Inténtalo de nuevo.",
-      })
+      toast.error(`Error al actualizar estado: ${error.message}`)
     },
     onSuccess: (data) => {
       setIsUpdating(false)
       onStatusChange?.(data.status)
       
-      toast.success("Estado actualizado", {
+      toast.success("Estado actualizado exitosamente", {
         description: `El ticket ahora está ${TICKET_STATUS_LABELS[data.status as keyof typeof TICKET_STATUS_LABELS].toLowerCase()}`,
-        duration: 3000,
       })
     },
     onSettled: () => {
       // Always refetch after error or success
-      queryClient.invalidateQueries({
-        queryKey: ["tickets", "all"],
+      void queryClient.invalidateQueries({
+        queryKey: ["tickets", "all"]
       })
     }
-  });
+  }));
 
   const handleStatusChange = (newStatus: string) => {
     if (newStatus === optimisticStatus || disabled || isUpdating) return
