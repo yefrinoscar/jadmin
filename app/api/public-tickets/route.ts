@@ -204,13 +204,25 @@ export async function POST(request: NextRequest) {
     console.log('Photo URLs:', values.p_photo_url);
     
     try {
-      // Check if company exists (non-provisional)
-      const { data: existingCompany, error: companyError } = await supabase
+      // Check if company exists (non-provisional) by company name or email
+      const { data: existingCompanyByName, error: companyNameError } = await supabase
         .from('clients')
         .select('id')
         .ilike('company_name', values.p_company_name)
         .eq('is_provisional', false)
         .limit(1);
+        
+      // Check if company exists by email
+      const { data: existingCompanyByEmail, error: companyEmailError } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('email', values.p_contact_email)
+        .eq('is_provisional', false)
+        .limit(1);
+        
+      // Combine results - prioritize email match if both exist
+      const existingCompany = (existingCompanyByEmail && existingCompanyByEmail.length > 0) ? existingCompanyByEmail : existingCompanyByName;
+      const companyError = companyEmailError || companyNameError;
         
       if (companyError) {
         console.error('Error checking existing company:', companyError);
