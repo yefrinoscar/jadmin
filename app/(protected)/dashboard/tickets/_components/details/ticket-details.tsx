@@ -11,6 +11,7 @@ import { InteractiveStatusSelector } from "../interactive-status-selector"
 import { InteractivePrioritySelector } from "../interactive-priority-selector"
 import { AssignUserPopover } from "../assign-user-popover"
 import { EditableField } from "./editable-field"
+import { TicketPhotos } from "./ticket-photos"
 
 interface TicketDetailsProps {
   ticket: TicketListItem
@@ -69,9 +70,15 @@ export function TicketDetails({
 
           <EditableField label="Descripción">
             <div className="text-xs">
-              {ticket.title}
+              {ticket.description || ticket.title}
             </div>
           </EditableField>
+          {/* Photos section */}
+          {ticket.photo_url && ticket.photo_url.length > 0 && (
+            <div className="col-span-1 md:col-span-2">
+              <TicketPhotos photos={ticket.photo_url} />
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -74,6 +74,7 @@ export const TicketListItemSchema = z.object({
   updated_at: z.string(),
   client_id: z.string(),
   client_company_name: z.string(),
+  photo_url: z.array(z.string()).nullable(),
   reported_by: z.object({
     id: z.string(),
     name: z.string()
@@ -196,9 +197,12 @@ export const ticketsRouter = createTRPCRouter({
         id: tag.service_tag.id,
         tag: tag.service_tag.tag,
         description: tag.service_tag.description
-      })) || []
+      })) || [],
+      photo_url: ticket.photo_url || null,
     }));
 
+    console.log("formattedTickets", formattedTickets);
+    
     // Validate the output using our schema
     return TicketsListOutputSchema.parse(formattedTickets);
   }),
