@@ -70,6 +70,8 @@ export const commentsRouter = createTRPCRouter({
     .input(AddCommentSchema)
     .mutation(async ({ ctx, input }) => {
       let photo_urls: string[] = [];
+
+      console.log('input', input);
       
       // Handle file uploads if files are provided
       if (input.files && input.files.length > 0) {
@@ -80,8 +82,8 @@ export const commentsRouter = createTRPCRouter({
             const fileObj = await base64ToFile(file.data, file.name);
             
             // Convert File to buffer for storage
-            const arrayBuffer = await fileObj.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
+            /* const arrayBuffer = await fileObj.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer); */
             
             // Generate a unique filename
             const fileExt = file.name.split('.').pop() || 'file';
@@ -91,7 +93,7 @@ export const commentsRouter = createTRPCRouter({
             // Upload file to Supabase Storage
             const { data, error } = await ctx.supabase.storage
               .from('images')
-              .upload(filePath, buffer, {
+              .upload(filePath, fileObj, {
                 contentType: fileObj.type,
                 upsert: true
               });

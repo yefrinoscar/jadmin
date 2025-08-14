@@ -237,7 +237,7 @@ export function TicketComments({
                 className="hidden"
                 id="file-upload"
               />
-              <Button
+              {/* <Button
                 type="button"
                 variant="outline"
                 size="sm"
@@ -246,7 +246,7 @@ export function TicketComments({
               >
                 <Paperclip className="h-4 w-4 mr-1" />
                 Adjuntar
-              </Button>
+              </Button> */}
               <span className="text-xs text-muted-foreground">
                 {selectedFiles.length > 0 && `${selectedFiles.length} archivo(s) seleccionado(s)`}
               </span>

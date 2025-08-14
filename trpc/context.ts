@@ -7,7 +7,6 @@ export interface CreateContextOptions {
   user: User | null
 }
 
-
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     supabase: opts.supabase,
@@ -19,8 +18,6 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
 export const createTRPCContext = async () => {
   const session = await auth()
   const user = await currentUser()
-
-  console.log(await session.getToken())
 
   // Create Supabase client with proper cookie handling
   const supabase = createClient(
