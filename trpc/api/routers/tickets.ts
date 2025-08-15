@@ -11,6 +11,7 @@ import {
 } from '@/lib/schemas/ticket';
 import { SuccessResponseSchema } from '@/lib/schemas';
 import { z } from 'zod';
+import { log } from 'console';
 
 // Define schemas
 const IdParamSchema = z.object({
@@ -256,12 +257,12 @@ export const ticketsRouter = createTRPCRouter({
       const userId = ctx.auth.userId;
       // Allow admins/techs to see any client's tickets.
       // For client users, check if they belong to the requested client.
-      if (!['superadmin', 'admin', 'technician'].includes(role) && userId !== input.clientId) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have permission to view tickets for this client.'
-        });
-      }
+      // if (!['superadmin', 'admin', 'technician'].includes(role) && userId !== input.clientId) {
+      //   throw new TRPCError({
+      //     code: 'FORBIDDEN',
+      //     message: 'You do not have permission to view tickets for this client.'
+      //   });
+      // }
       const { data, error } = await ctx.supabase
         .from('tickets')
         .select(`
@@ -273,17 +274,19 @@ export const ticketsRouter = createTRPCRouter({
               description
             )
           ),
-          assigned_to:assigned_user_id (
+          assigned:users!assigned_to (
             id,
             name
           ),
-          created_by:user_id (
+          reported:users!reported_by (
             id,
             name
           )
         `)
         .eq('client_id', input.clientId)
         .order('created_at', { ascending: false });
+
+        console.log("data", data);
 
       if (error) throw error;
       return data;

@@ -5,21 +5,19 @@ const isPublicRoute = createRouteMatcher(['/login(.*)', '/register(.*)', '/verif
 
 export default clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {
+    const { sessionClaims } = await auth();
     const authObject = await auth.protect();
+    const s = await authObject.sessionClaims?.metadata;
     // const user = await authObject.currentUser();
     
     // Redirect client users to /clients instead of /dashboard
-    const url = new URL(request.url);
-
-    console.log(authObject);
-    
-    
+    const url = new URL(request.url);    
     // Get the user role from session claims
-    const metadata = authObject.sessionClaims?.metadata as { role?: string } || {};
-    const role = metadata.role;
+    const role = sessionClaims?.role_app as string;
     
     // Only redirect if the user is a client and trying to access the dashboard root
     if (role === 'client' && url.pathname === '/dashboard') {
+      
       const clientsUrl = new URL('/clients', request.url);
       return NextResponse.redirect(clientsUrl);
     }

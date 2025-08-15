@@ -12,6 +12,7 @@ import { InteractivePrioritySelector } from "../interactive-priority-selector"
 import { AssignUserPopover } from "../assign-user-popover"
 import { EditableField } from "./editable-field"
 import { TicketPhotos } from "./ticket-photos"
+import { useUser } from "@clerk/nextjs"
 
 interface TicketDetailsProps {
   ticket: TicketListItem
@@ -22,9 +23,13 @@ export function TicketDetails({
   ticket,
   users
 }: TicketDetailsProps) {
+  const { user } = useUser();
+  console.log('USERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', user?.publicMetadata?.role)
+
+  const userRole = user?.publicMetadata?.role;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-6">
 
       <div className="space-y-3">
 
@@ -34,6 +39,7 @@ export function TicketDetails({
             <InteractiveStatusSelector 
               ticketId={ticket.id}
               currentStatus={ticket.status}
+              disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
           
@@ -41,6 +47,7 @@ export function TicketDetails({
             <InteractivePrioritySelector 
               ticketId={ticket.id}
               currentPriority={ticket.priority}
+              disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
           
@@ -55,6 +62,7 @@ export function TicketDetails({
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               } : null}
+              disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
 
@@ -73,6 +81,7 @@ export function TicketDetails({
               {ticket.description || ticket.title}
             </div>
           </EditableField>
+
           {/* Photos section */}
           {ticket.photo_url && ticket.photo_url.length > 0 && (
             <div className="col-span-1 md:col-span-2">

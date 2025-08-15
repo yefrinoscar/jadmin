@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Check, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,15 +33,23 @@ interface AssignUserPopoverProps {
   ticketId: string;
   currentAssignedUser: UserType | null;
   onAssignmentChange?: (user: UserType | null) => void;
+  disabled?: boolean;
 }
 
 export function AssignUserPopover({
   ticketId,
   currentAssignedUser,
   onAssignmentChange,
+  disabled = false,
 }: AssignUserPopoverProps) {
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [localCurrentUser, setLocalCurrentUser] = useState<UserType | null>(currentAssignedUser);
+
+  // Update local current user when prop changes
+  useEffect(() => {
+    setLocalCurrentUser(currentAssignedUser);
+  }, [currentAssignedUser]);
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -52,17 +60,15 @@ export function AssignUserPopover({
       onMutate: async (newData) => {
         // Optimistic update
         setIsUpdating(true);
-        
+        const queryKey = [['tickets', 'getAll'], { type: 'query' }]
+
         // Cancel any outgoing refetches
         await queryClient.cancelQueries({
-          queryKey: ["tickets", "all"],
+          queryKey: queryKey,
         });
         
         // Snapshot the previous value
-        const previousTickets = queryClient.getQueryData([
-          "tickets",
-          "all",
-        ]);
+        const previousTickets = queryClient.getQueryData(queryKey);
         
         // Find the user to be assigned
         const userId = newData.assigned_to;
@@ -77,12 +83,11 @@ export function AssignUserPopover({
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         } : null;
+
+        setLocalCurrentUser(fullUserType);
         
         // Optimistically update the cache
-        queryClient.setQueryData([
-          "tickets",
-          "all",
-        ], (old: any) => {
+        queryClient.setQueryData(queryKey, (old: any) => {
           // Handle both array and paginated data structures
           if (!old) return old;
           
@@ -90,7 +95,12 @@ export function AssignUserPopover({
           if (Array.isArray(old)) {
             return old.map((ticket) => 
               ticket.id === newData.id 
-                ? { ...ticket, assigned_to: fullUserType }
+                ? { 
+                    ...ticket, 
+                    assigned_user: fullUserType,
+                    ...(newData.status && { status: newData.status }),
+                    ...(newData.priority && { priority: newData.priority })
+                  }
                 : ticket
             );
           }
@@ -103,7 +113,12 @@ export function AssignUserPopover({
                 ...page,
                 tickets: page.tickets.map((ticket: any) =>
                   ticket.id === newData.id
-                    ? { ...ticket, assigned_to: fullUserType }
+                    ? { 
+                        ...ticket, 
+                        assigned_user: fullUserType,
+                        ...(newData.status && { status: newData.status }),
+                        ...(newData.priority && { priority: newData.priority })
+                      }
                     : ticket
                 ),
               })),
@@ -116,7 +131,7 @@ export function AssignUserPopover({
         // Call the callback for parent component updates
         onAssignmentChange?.(fullUserType);
         
-        return { previousTickets };
+        return { previousTickets, queryKey };
       },
       onSuccess: () => {
         toast.success("Asignación de ticket actualizada exitosamente");
@@ -126,10 +141,7 @@ export function AssignUserPopover({
       onError: (error, newData, context) => {
         // Revert optimistic update on error
         if (context?.previousTickets) {
-          queryClient.setQueryData([
-            "tickets",
-            "all",
-          ], context.previousTickets);
+          queryClient.setQueryData(context.queryKey, context.previousTickets);
         }
         
         toast.error("Error al actualizar la asignación: " + error.message);
@@ -137,9 +149,9 @@ export function AssignUserPopover({
       },
       onSettled: () => {
         // Always refetch after error or success
-        queryClient.invalidateQueries({
-          queryKey: ["tickets", "all"],
-        });
+        // queryClient.invalidateQueries({
+        //   queryKey: ["tickets", "all"],
+        // });
       }
     })
   );
@@ -157,7 +169,7 @@ export function AssignUserPopover({
   };
 
   const getCurrentUserDisplay = () => {
-    if (!currentAssignedUser) {
+    if (!localCurrentUser) {
       return (
         <div className="flex items-center gap-2 text-muted-foreground">
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center border-2 border-transparent group-hover:border-primary/30 group-hover:bg-primary/5 transition-all duration-200 cursor-pointer">
@@ -172,12 +184,12 @@ export function AssignUserPopover({
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center border-2 border-transparent group-hover:border-primary/50 group-hover:bg-primary/20 group-hover:scale-105 transition-all duration-200 cursor-pointer">
           <span className="text-xs font-medium text-primary group-hover:text-primary/90 transition-colors duration-200">
-            {currentAssignedUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+            {localCurrentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
           </span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate group-hover:text-primary transition-colors duration-200">
-            {currentAssignedUser.name}
+            {localCurrentUser.name}
           </div>
         </div>
       </div>
@@ -189,12 +201,12 @@ export function AssignUserPopover({
       <Tooltip>
         <TooltipTrigger asChild>
           <div>
-            <Popover open={open} onOpenChange={setOpen}>
+            <Popover open={!disabled && open} onOpenChange={disabled ? undefined : setOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
                   className="h-auto p-0 justify-start hover:bg-muted/50 w-full group transition-all duration-200 cursor-pointer"
-                  disabled={isUpdating}
+                  disabled={disabled || isUpdating}
                 >
                   {getCurrentUserDisplay()}
                 </Button>
@@ -238,7 +250,7 @@ export function AssignUserPopover({
                             <div className="text-sm font-medium group-hover:text-primary transition-colors duration-200">Sin asignar</div>
                             <div className="text-xs text-muted-foreground">Remover asignación</div>
                           </div>
-                          {!currentAssignedUser && (
+                          {!localCurrentUser && (
                             <Check className="h-4 w-4 text-primary" />
                           )}
                         </div>
@@ -273,7 +285,7 @@ export function AssignUserPopover({
                                 </Badge>
                               </div>
                             </div>
-                            {currentAssignedUser?.id === user.id && (
+                            {localCurrentUser?.id === user.id && (
                               <Check className="h-4 w-4 text-primary" />
                             )}
                           </div>

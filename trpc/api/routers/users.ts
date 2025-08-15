@@ -14,6 +14,60 @@ import {
 import { clerkClient } from '@/lib/utils/clerk-backend';
 
 export const usersRouter = createTRPCRouter({
+  getById: protectedProcedure
+    .output(z.object({
+      id: z.string(),
+      email: z.string().email(),
+      name: z.string(),
+      role: UserRoleSchema,
+      is_disabled: z.boolean(),
+      client_id: z.string().uuid().nullable(),
+      created_at: z.string().nullable(),
+      updated_at: z.string().nullable(),
+      clients: z.object({
+        id: z.string().uuid(),
+        name: z.string(),
+        company_name: z.string().nullable()
+      }).nullable()
+    }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.auth.userId;
+      try {
+        // Get user data from Supabase including client information
+        const { data, error } = await ctx.supabase
+          .from('users')
+          .select('*, clients:client_id (id, name, company_name)')
+          .eq('id', userId)
+          .single();
+
+        if (error) {
+          throw new TRPCError({ 
+            code: 'INTERNAL_SERVER_ERROR', 
+            message: `Failed to fetch user data: ${error.message}` 
+          });
+        }
+
+        if (!data) {
+          throw new TRPCError({ 
+            code: 'NOT_FOUND', 
+            message: 'User not found' 
+          });
+        }
+
+        console.log(data);
+        
+        
+        return data;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'An unknown error occurred',
+        });
+      }
+    }),
+
   getCurrentUser: protectedProcedure.output(ClerkUserSchema).query(async ({ ctx }) => {
     // Return the user as ClerkUserWithMetadata to ensure proper typing
     const user: ClerkUser = {
