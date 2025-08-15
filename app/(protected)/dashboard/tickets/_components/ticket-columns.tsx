@@ -195,6 +195,9 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
     cell: ({ row }) => {
       const status = row.getValue("status") as TicketStatus
       const ticket = row.original
+
+      console.log(`status ${ticket.id}: ${status}`);
+      
       
       return (
         <div className="w-[140px]" onClick={(e) => e.stopPropagation()}>

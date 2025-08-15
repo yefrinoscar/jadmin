@@ -19,11 +19,23 @@ import { useTRPC } from "@/trpc/client"
 import { useQueryClient } from "@tanstack/react-query";
 import { SignOutButton, useUser } from "@clerk/nextjs";
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: React.ElementType;
+  adminOnly?: boolean;
+}
+
+const navigation: NavigationItem[] = [
   { name: "Panel de Control", href: "/dashboard", icon: Home },
-  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon },
-  { name: "Clientes", href: "/dashboard/clients", icon: Building2 },
+  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon, adminOnly: true },
+  { name: "Clientes", href: "/dashboard/clients", icon: Building2, adminOnly: true },
   { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true },
+];
+
+const clientNavigation: NavigationItem[] = [
+  { name: "Panel de Control", href: "/dashboard", icon: Home },
+  { name: "Mis Tickets", href: "/clients/tickets", icon: TicketIcon },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -39,7 +51,6 @@ const roleColors: Record<string, string> = {
   technician: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
   client: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
 };
-
 
 interface User {
   id: string;
@@ -89,7 +100,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
-        {navigation.map((item) => {
+        {(userRole === 'client' ? clientNavigation : navigation).map((item) => {
           // Hide admin-only items from non-admin users
           if (item.adminOnly && !isAdmin) {
             return null;

@@ -76,8 +76,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
 
   const trpc = useTRPC()
   const queryClient = useQueryClient();
-  
-  console.log("ticket", ticket)
+
   // Fetch ticket updates/comments
   // const queryOptions = trpc.tickets..queryOptions
   // const { data: ticketWithUpdates, refetch } = useQuery({ ...queryOptions({ clientId: ticket?.id || '' }), enabled: !!ticket?.id })
