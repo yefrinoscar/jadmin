@@ -52,18 +52,12 @@ interface TicketHistoryDisplay {
     name: string
   }
 }
-
+ 
 export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) {
   const [activeTab, setActiveTab] = useState("details")
   const [newComment, setNewComment] = useState("")
   const [isSubmittingComment, setIsSubmittingComment] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [updatedTicket, setUpdatedTicket] = useState({
-    status: ticket?.status || '',
-    priority: ticket?.priority || '',
-    assigned_user_id: ticket?.assigned_user?.id || null
-  })
-  const [isUpdatingTicket, setIsUpdatingTicket] = useState(false)
   const [newSerialNumber, setNewSerialNumber] = useState({
     id: '',
     tag: '',
@@ -77,14 +71,8 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   const trpc = useTRPC()
   const queryClient = useQueryClient();
 
-  // Fetch ticket updates/comments
-  // const queryOptions = trpc.tickets..queryOptions
-  // const { data: ticketWithUpdates, refetch } = useQuery({ ...queryOptions({ clientId: ticket?.id || '' }), enabled: !!ticket?.id })
-
   // Get ticket comments
   const { data: ticketWithComments, isLoading: isLoadingComments } = useQuery({ ...trpc.comments.getByTicketId.queryOptions({ ticket_id: ticket?.id || '' }), enabled: !!ticket?.id })
-  
-  // Get ticket history
   const { data: ticketHistory, isLoading: isLoadingHistory } = useQuery({ ...trpc.tickets.getTicketHistory.queryOptions({ id: ticket?.id || '' }), enabled: !!ticket?.id })
   const { data: serialNumbers } = useQuery({ ...trpc.serviceTags.getByTicketId.queryOptions({ ticketId: ticket?.id || '' }), enabled: !!ticket?.id })
 
@@ -166,24 +154,7 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
       reader.onerror = (error) => reject(error);
     });
   }
-  
-  // Handle ticket update
-  const handleUpdateTicket = async () => {
-    if (!ticket?.id) return
-    
-    try {
-      setIsUpdatingTicket(true)
-      await updateTicket({
-        id: ticket.id,
-        // status: updatedTicket.status,
-        // priority: updatedTicket.priority,
-        assigned_to: updatedTicket.assigned_user_id
-      })
-    } finally {
-      setIsUpdatingTicket(false)
-    }
-  }
-  
+
   // Mutation for adding a service tag to a ticket
   const { mutateAsync: addServiceTag } = useMutation(trpc.tickets.addServiceTag.mutationOptions({
     onSuccess: () => {
@@ -243,11 +214,6 @@ export function TicketDrawer({ ticket, open, onOpenChange }: TicketDrawerProps) 
   // Reset form when ticket changes
   useEffect(() => {
     if (ticket) {
-      setUpdatedTicket({
-        status: ticket.status || '',
-        priority: ticket.priority || '',
-        assigned_user_id: ticket.assigned_user?.id || null
-      })
       setNewComment("")
       setNewSerialNumber({ id: '', tag: '', description: '', hardware_type: '', location: '' })
       setIsEditing(false)

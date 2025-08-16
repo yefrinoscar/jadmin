@@ -139,9 +139,6 @@ export function InteractiveStatusSelector({
 
   const currentStatusOption = statusOptions.find(option => option.value === status)
 
-  console.log('optimisticStatus', status);
-  console.log('currentStatusOption', currentStatusOption);
-
   return (
     <div className="relative">
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>

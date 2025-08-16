@@ -70,8 +70,6 @@ export const commentsRouter = createTRPCRouter({
     .input(AddCommentSchema)
     .mutation(async ({ ctx, input }) => {
       let photo_urls: string[] = [];
-
-      console.log('input', input);
       
       // Handle file uploads if files are provided
       if (input.files && input.files.length > 0) {

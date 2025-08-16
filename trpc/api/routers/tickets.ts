@@ -201,8 +201,6 @@ export const ticketsRouter = createTRPCRouter({
       })) || [],
       photo_url: ticket.photo_url || null,
     }));
-
-    console.log("formattedTickets", formattedTickets);
     
     // Validate the output using our schema
     return TicketsListOutputSchema.parse(formattedTickets);
@@ -285,8 +283,6 @@ export const ticketsRouter = createTRPCRouter({
         `)
         .eq('client_id', input.clientId)
         .order('created_at', { ascending: false });
-
-        console.log("data", data);
 
       if (error) throw error;
       return data;

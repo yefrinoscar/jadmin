@@ -169,20 +169,13 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
       const ticket = row.original
       
       // Convert to full UserType for the AssignUserPopover component
-      const fullUserType = assignedTo ? {
-        ...assignedTo,
-        email: "",
-        role: "technician" as const,
-        auth_id: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } : null;
+      const userId = assignedTo?.id || null;
       
       return (
         <div className="w-[120px]" onClick={(e) => e.stopPropagation()}>
           <AssignUserPopover 
             ticketId={ticket.id}
-            currentAssignedUser={fullUserType}
+            currentAssignedUser={userId}
           />
         </div>
       )
@@ -194,10 +187,7 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
     header: "Estado",
     cell: ({ row }) => {
       const status = row.getValue("status") as TicketStatus
-      const ticket = row.original
-
-      console.log(`status ${ticket.id}: ${status}`);
-      
+      const ticket = row.original      
       
       return (
         <div className="w-[140px]" onClick={(e) => e.stopPropagation()}>

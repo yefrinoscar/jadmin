@@ -109,7 +109,7 @@ export function InteractivePrioritySelector({
     onSuccess: (data) => {
       setIsUpdating(false)
       const newPriority = data.priority as keyof typeof TICKET_PRIORITY_LABELS;
-      setOptimisticPriority(newPriority)
+      // setOptimisticPriority(newPriority)
       onPriorityChange?.(newPriority)
       
       toast.success("Prioridad actualizada", {

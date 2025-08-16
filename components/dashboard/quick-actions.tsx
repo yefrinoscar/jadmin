@@ -51,7 +51,7 @@ export function QuickActions() {
       icon: TicketIcon,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
-      link: "/tickets/new"
+      link: "/dashboard/tickets"
     },
     {
       title: "Agregar Cliente",
@@ -59,7 +59,7 @@ export function QuickActions() {
       icon: Building2,
       color: "text-purple-600",
       bgColor: "bg-purple-100",
-      link: "/clients/new"
+      link: "/dashboard/clients"
     },
     {
       title: "Agregar Etiqueta",
@@ -67,7 +67,7 @@ export function QuickActions() {
       icon: Tag,
       color: "text-indigo-600",
       bgColor: "bg-indigo-100",
-      link: "/service-tags/new"
+      link: "/dashboard/clients"
     },
     {
       title: "Invitar Usuario",
@@ -75,7 +75,7 @@ export function QuickActions() {
       icon: Users,
       color: "text-emerald-600",
       bgColor: "bg-emerald-100",
-      link: "/users/invite"
+      link: "/dashboard/users"
     }
   ];
 

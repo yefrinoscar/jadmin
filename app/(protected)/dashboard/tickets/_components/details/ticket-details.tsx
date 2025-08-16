@@ -24,7 +24,6 @@ export function TicketDetails({
   users
 }: TicketDetailsProps) {
   const { user } = useUser();
-  console.log('USERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', user?.publicMetadata?.role)
 
   const userRole = user?.publicMetadata?.role;
 
@@ -54,14 +53,7 @@ export function TicketDetails({
           <EditableField label="Asignado a">
             <AssignUserPopover 
               ticketId={ticket.id}
-              currentAssignedUser={ticket.assigned_user ? {
-                ...ticket.assigned_user,
-                email: "",
-                role: "technician" as const,
-                auth_id: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              } : null}
+              currentAssignedUser={ticket.assigned_user?.id || null}
               disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
