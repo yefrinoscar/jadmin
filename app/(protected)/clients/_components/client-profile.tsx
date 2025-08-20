@@ -4,8 +4,11 @@ import { useTRPC } from "@/trpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { User, Building2, Mail, Calendar } from "lucide-react";
+import { User, Building2, Mail, Calendar, LogOut, Loader2 } from "lucide-react";
+import { SignOutButton } from "@clerk/nextjs";
+import { useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/trpc/api/root";
 
@@ -15,6 +18,7 @@ type UserData = RouterOutput["users"]["getById"];
 
 export function ClientProfile() {
   const trpc = useTRPC();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   
   // Get user data using tRPC
   const { data: userData, isLoading } = useQuery(
@@ -88,6 +92,31 @@ export function ClientProfile() {
               <Calendar className="h-4 w-4" />
               <span>Cliente desde: {userData.created_at ? format(new Date(userData.created_at), "dd 'de' MMMM 'de' yyyy", { locale: require('date-fns/locale/es') }) : "N/A"}</span>
             </div> */}
+          </div>
+          
+          {/* Sign Out Button */}
+          <div className="ml-auto">
+            <SignOutButton redirectUrl="/login">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="text-gray-600 hover:text-red-600 hover:bg-red-50"
+                onClick={() => setIsSigningOut(true)}
+                disabled={isSigningOut}
+              >
+                {isSigningOut ? (
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span className="text-xs">Saliendo...</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <LogOut className="h-3 w-3" />
+                    <span className="text-xs">Salir</span>
+                  </span>
+                )}
+              </Button>
+            </SignOutButton>
           </div>
         </div>
       </CardContent>

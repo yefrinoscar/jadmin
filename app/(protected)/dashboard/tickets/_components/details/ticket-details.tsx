@@ -58,12 +58,12 @@ export function TicketDetails({
             />
           </EditableField>
 
-          <EditableField label="Empresa">
-            {userRole !== 'client' && <div className="flex items-center gap-1.5">
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs">{ticket.client_company_name || "Sin empresa"}</span>
-            </div>}
-          </EditableField>
+
+          {userRole !== 'client' && <EditableField label="Empresa"><div className="flex items-center gap-1.5">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs">{ticket.client_company_name || "Sin empresa"}</span>
+          </div></EditableField>}
+
 
 
 
