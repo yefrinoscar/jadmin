@@ -74,9 +74,6 @@ export function ClientProfile() {
                   <Mail className="h-2.5 w-2.5 mr-1" />
                   {userData.email}
                 </Badge>
-                <Badge variant="outline" className="border-indigo-200 text-indigo-700 text-xs px-2 py-0.5">
-                  {clientName}
-                </Badge>
               </div>
               {companyName && (
                 <div className="flex items-center gap-1 text-gray-600">

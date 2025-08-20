@@ -148,7 +148,7 @@ export const ticketsRouter = createTRPCRouter({
         *,
         clients:client_id (
           id,
-          name
+          company_name
         ),
         ticket_service_tags!ticket_id (
           service_tag:service_tag_id (
@@ -185,7 +185,7 @@ export const ticketsRouter = createTRPCRouter({
       created_at: ticket.created_at,
       updated_at: ticket.updated_at,
       client_id: ticket.client_id,
-      client_company_name: ticket.clients?.name || '',
+      client_company_name: ticket.clients?.company_name || '',
       reported_by: {
         id: ticket.reported?.id || '',
         name: ticket.reported?.name || ''
@@ -201,6 +201,10 @@ export const ticketsRouter = createTRPCRouter({
       })) || [],
       photo_url: ticket.photo_url || null,
     }));
+
+    console.log("formattedTickets 1", data);
+    console.log("formattedTickets", formattedTickets);
+    
     
     // Validate the output using our schema
     return TicketsListOutputSchema.parse(formattedTickets);
@@ -265,6 +269,10 @@ export const ticketsRouter = createTRPCRouter({
         .from('tickets')
         .select(`
           *,
+          clients:client_id (
+            id,
+            name
+          ),
           ticket_service_tags!ticket_id (
             service_tag:service_tag_id (
               id,

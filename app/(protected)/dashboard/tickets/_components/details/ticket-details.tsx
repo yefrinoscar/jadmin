@@ -35,23 +35,23 @@ export function TicketDetails({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 
           <EditableField label="Estado">
-            <InteractiveStatusSelector 
+            <InteractiveStatusSelector
               ticketId={ticket.id}
               currentStatus={ticket.status}
               disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
-          
+
           <EditableField label="Prioridad">
-            <InteractivePrioritySelector 
+            <InteractivePrioritySelector
               ticketId={ticket.id}
               currentPriority={ticket.priority}
               disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
-          
+
           <EditableField label="Asignado a">
-            <AssignUserPopover 
+            <AssignUserPopover
               ticketId={ticket.id}
               currentAssignedUser={ticket.assigned_user?.id || null}
               disabled={userRole === 'client' ? true : false}
@@ -59,10 +59,10 @@ export function TicketDetails({
           </EditableField>
 
           <EditableField label="Empresa">
-            <div className="flex items-center gap-1.5">
+            {userRole !== 'client' && <div className="flex items-center gap-1.5">
               <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs">{ticket.client_company_name || "Sin empresa"}</span>
-            </div>
+            </div>}
           </EditableField>
 
 
