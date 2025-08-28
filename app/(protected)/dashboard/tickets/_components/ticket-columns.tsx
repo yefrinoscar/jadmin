@@ -1,5 +1,9 @@
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Copy, Building2 } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Copy, Building2, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useTRPC } from "@/trpc/client"
+import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +17,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { 
   TicketStatus,
   TicketPriority,
@@ -227,9 +241,61 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
     enableHiding: false,
     cell: ({ row }) => {
       const ticket = row.original
+      const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+      const queryClient = useQueryClient()
+      
+      const trpc = useTRPC()
+      
+      // Delete ticket mutation using proper tRPC integration
+      const deleteTicketOptions = trpc.tickets.delete.mutationOptions({
+        onSuccess: () => {
+          // Invalidate and refetch tickets list
+          queryClient.invalidateQueries({ queryKey: ['tickets'] })
+          toast.success("Ticket eliminado exitosamente")
+
+          queryClient.invalidateQueries(trpc.tickets.getAll.queryOptions());
+        },
+        onError: (error) => {
+          console.error('Error deleting ticket:', error)
+          toast.error(`Error al eliminar ticket: ${error.message}`)
+        }
+      })
+      
+      const deleteTicketMutation = useMutation(deleteTicketOptions)
+      
+      const handleDeleteTicket = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        deleteTicketMutation.mutate({ id: ticket.id })
+        setShowDeleteDialog(false)
+      }
 
       return (
         <div className="w-[50px] flex justify-center">
+          <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción no se puede deshacer. Se eliminará permanentemente el ticket 
+                  <span className="font-mono font-bold"> {ticket.id}</span> y todos sus datos asociados.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteTicket}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {deleteTicketMutation.isPending ? (
+                    <span>Eliminando...</span>
+                  ) : (
+                    <span>Eliminar</span>
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -251,7 +317,14 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
               <DropdownMenuSeparator />
               <DropdownMenuItem>Ver ticket</DropdownMenuItem>
               <DropdownMenuItem>Editar ticket</DropdownMenuItem>
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem 
+                className="text-red-600 focus:bg-red-100 dark:focus:bg-red-900/50"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowDeleteDialog(true)
+                }}
+              >
+                <Trash2 className="h-4 w-4 text-red-600" />
                 Eliminar ticket
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -260,4 +333,4 @@ export const ticketColumns: ColumnDef<TicketListItem>[] = [
       )
     },
   },
-] 
+]
