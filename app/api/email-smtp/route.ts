@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
         const fromEmail = from || process.env.RESEND_FROM_EMAIL || 'no-reply@dashboard.underla.lat';
 
         const resendResult = await resend.emails.send({
-          from: fromEmail,
+          from: 'no-reply@dashboard.underla.lat',
           to,
           subject,
           html,
