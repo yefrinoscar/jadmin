@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
           html,
         });
 
+        console.log('Email sent successfully via Resend:', JSON.stringify(resendResult));
         console.log('Email sent successfully via Resend:', resendResult.data?.id);
 
         emailResult = {
