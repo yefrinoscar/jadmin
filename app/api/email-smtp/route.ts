@@ -64,10 +64,20 @@ export async function POST(req: NextRequest) {
       user: process.env.SMTP_USER,
       password: process.env.SMTP_PASSWORD,
     });
+
+
   
     // Parse request body
     const body = await req.json();
     const { to, subject, html, from, attachments } = body;
+
+    console.log('params body', {
+        to: body?.to,
+        subject: body?.subject,
+        html: body?.html,
+        from: body?.from,
+        attachments: body?.attachments,
+    } )
 
     // Validate required fields
     if (!to || !subject || !html) {
