@@ -55,7 +55,15 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Parse request body
+
+    console.log('SMTP configuration:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE,
+      user: process.env.SMTP_USER,
+      password: process.env.SMTP_PASSWORD,
+    });
+ 0   // Parse request body
     const body = await req.json();
     const { to, subject, html, from } = body;
 
