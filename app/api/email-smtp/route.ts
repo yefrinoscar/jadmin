@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
       user: process.env.SMTP_USER,
       password: process.env.SMTP_PASSWORD,
     });
- 0   // Parse request body
+  
+    // Parse request body
     const body = await req.json();
     const { to, subject, html, from } = body;
 
