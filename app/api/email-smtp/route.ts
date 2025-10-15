@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   
     // Parse request body
     const body = await req.json();
-    const { to, subject, html, from } = body;
+    const { to, subject, html, from, attachments } = body;
 
     // Validate required fields
     if (!to || !subject || !html) {
@@ -92,6 +92,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate attachments format if provided
+    if (attachments && !Array.isArray(attachments)) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Attachments must be an array' 
+        },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // Validate each attachment has required fields
+    if (attachments && attachments.length > 0) {
+      for (const attachment of attachments) {
+        if (!attachment.filename || !attachment.content) {
+          return NextResponse.json(
+            { 
+              success: false,
+              error: 'Each attachment must have filename and content (base64)' 
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+      }
+    }
+
     // Try SMTP first, fallback to Resend if it fails
     let emailResult;
     let usedMethod = 'SMTP';
@@ -107,12 +133,21 @@ export async function POST(req: NextRequest) {
         throw new Error('No sender email configured for SMTP');
       }
 
+      // Prepare attachments for nodemailer format
+      const mailAttachments = attachments?.map((att: any) => ({
+        filename: att.filename,
+        content: att.content,
+        encoding: 'base64',
+        contentType: att.contentType || 'application/octet-stream'
+      })) || [];
+
       // Send email via SMTP
       const info = await smtpTransporter.sendMail({
         from: fromEmail,
         to,
         subject,
         html,
+        attachments: mailAttachments,
       });
 
       console.log('Email sent successfully via SMTP:', info.messageId);
@@ -140,11 +175,18 @@ export async function POST(req: NextRequest) {
         const resend = new Resend(resendApiKey);
         const fromEmail = from || process.env.RESEND_FROM_EMAIL || 'no-reply@dashboard.underla.lat';
 
+        // Prepare attachments for Resend format
+        const resendAttachments = attachments?.map((att: any) => ({
+          filename: att.filename,
+          content: att.content,
+        })) || [];
+
         const resendResult = await resend.emails.send({
           from: 'no-reply@dashboard.underla.lat',
           to,
           subject,
           html,
+          attachments: resendAttachments.length > 0 ? resendAttachments : undefined,
         });
 
         console.log('Email sent successfully via Resend:', JSON.stringify(resendResult));
