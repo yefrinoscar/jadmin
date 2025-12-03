@@ -8,9 +8,11 @@ import {
   Building2, 
   Users,
   LogOut,
-  Loader2
+  Loader2,
+  MessageCircle
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
@@ -20,10 +22,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { SignOutButton, useUser } from "@clerk/nextjs";
 
 const navigation = [
-  { name: "Panel de Control", href: "/dashboard", icon: Home },
-  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon },
-  { name: "Clientes", href: "/dashboard/clients", icon: Building2 },
-  { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true },
+  { name: "Panel de Control", href: "/dashboard", icon: Home, disabled: true },
+  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon, disabled: true },
+  { name: "Clientes", href: "/dashboard/clients", icon: Building2, disabled: true },
+  { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true, productionOnly: true },
+  { name: "Chat Soporte", href: "/dashboard/chat", icon: MessageCircle },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -61,6 +64,9 @@ export function Sidebar() {
 
   const userRole = userMetadata?.role;
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  
+  // Check if we're in production
+  const isProduction = process.env.NODE_ENV === 'production';
 
   if (!isLoaded || !isSignedIn) {
     return (
@@ -80,9 +86,13 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center px-6 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <TicketIcon className="w-4 h-4 text-white" />
-          </div>
+          <Image
+            src="/logo.svg"
+            alt="JAdmin Logo"
+            width={32}
+            height={32}
+            className="w-8 h-8"
+          />
           <span className="text-lg font-semibold text-gray-900">JAdmin</span>
         </div>
       </div>
@@ -95,21 +105,41 @@ export function Sidebar() {
             return null;
           }
 
+          // Hide production-only items in development
+          if (item.productionOnly && !isProduction) {
+            return null;
+          }
+
           const isActive = pathname === item.href;
           const Icon = item.icon;
+          const isDisabled = item.disabled === true;
           
+          const buttonContent = (
+            <Button
+              variant={isActive ? "secondary" : "ghost"}
+              className={cn(
+                "w-full justify-start gap-3",
+                isActive && "bg-blue-50 text-blue-700 border-blue-200",
+                isDisabled && "opacity-50 cursor-not-allowed"
+              )}
+              disabled={isDisabled}
+            >
+              <Icon className="w-4 h-4" />
+              {item.name}
+            </Button>
+          );
+
+          if (isDisabled) {
+            return (
+              <div key={item.name} title="No disponible en este entorno">
+                {buttonContent}
+              </div>
+            );
+          }
+
           return (
             <Link key={item.name} href={item.href}>
-              <Button
-                variant={isActive ? "secondary" : "ghost"}
-                className={cn(
-                  "w-full justify-start gap-3",
-                  isActive && "bg-blue-50 text-blue-700 border-blue-200"
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {item.name}
-              </Button>
+              {buttonContent}
             </Link>
           );
         })}
