@@ -1,133 +1,210 @@
-# Chat Widget - Guía de Implementación
+# Chat Widget - Guía de Implementación v2.0
 
-Esta guía explica cómo integrar el widget de chat de JAdmin en tu sitio web.
+Esta guía explica cómo integrar el widget de chat de JAdmin en tu sitio web con la nueva arquitectura de **handoff IA → Humano**.
 
 ---
 
-## Configuración
+## 🏗️ Arquitectura
 
-### URL del API
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        ARQUITECTURA DEL WIDGET                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   CLIENTE (Widget)                    SERVIDOR (JAdmin)              │
+│   ────────────────                    ─────────────────              │
+│                                                                      │
+│   ┌─────────────┐                     ┌─────────────────┐            │
+│   │  Supabase   │◄────────────────────│   PostgreSQL    │            │
+│   │  Realtime   │  (solo lectura)     │   + Realtime    │            │
+│   └─────────────┘                     └─────────────────┘            │
+│         ▲                                     ▲                      │
+│         │ INSERT events                       │                      │
+│         │                                     │                      │
+│   ┌─────────────┐                     ┌─────────────────┐            │
+│   │   Widget    │────────────────────►│  POST /api/     │            │
+│   │   (React)   │  enviar mensaje     │  chat/public    │            │
+│   └─────────────┘                     └─────────────────┘            │
+│                                               │                      │
+│                                               ▼                      │
+│                                       ┌─────────────────┐            │
+│                                       │  ¿managed_by    │            │
+│                                       │   === 'ai'?     │            │
+│                                       └────────┬────────┘            │
+│                                                │                     │
+│                                    ┌───────────┴───────────┐         │
+│                                    │                       │         │
+│                                    ▼                       ▼         │
+│                              SÍ (IA)               NO (Humano)       │
+│                              ───────               ────────────      │
+│                                 │                       │            │
+│                                 ▼                       ▼            │
+│                          ┌───────────┐          ┌───────────┐        │
+│                          │ Mistral   │          │  message: │        │
+│                          │ responde  │          │   null    │        │
+│                          └───────────┘          └───────────┘        │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-Configura la URL base del servidor JAdmin:
+### Principios Clave
+
+| Acción | Método | Descripción |
+|--------|--------|-------------|
+| **Enviar mensaje** | `POST /api/chat/public` | Único endpoint para escribir |
+| **Leer mensajes** | Supabase Realtime | Nunca polling, solo suscripción |
+| **Handoff** | Automático | Cuando un agente responde, la IA se desactiva |
+
+---
+
+## 📦 Instalación
+
+### Dependencias
+
+```bash
+npm install @supabase/supabase-js
+# o
+yarn add @supabase/supabase-js
+# o
+pnpm add @supabase/supabase-js
+```
+
+---
+
+## ⚙️ Configuración
+
+### 1. Obtener Credenciales de Supabase
 
 ```typescript
-const CHAT_API_URL = 'https://jadmin.tudominio.com';
+const JADMIN_URL = 'https://jadmin.tudominio.com';
+
+async function getSupabaseConfig() {
+  const response = await fetch(`${JADMIN_URL}/api/chat/public?config=supabase`);
+  const config = await response.json();
+  return {
+    url: config.url,      // URL de Supabase
+    anonKey: config.anonKey  // Clave pública (anon key)
+  };
+}
 ```
 
-O usando variables de entorno:
+### 2. Inicializar Cliente
 
-```env
-NEXT_PUBLIC_CHAT_API_URL=https://jadmin.tudominio.com
+```typescript
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+let supabase: SupabaseClient | null = null;
+
+async function initSupabase() {
+  const config = await getSupabaseConfig();
+  supabase = createClient(config.url, config.anonKey);
+  return supabase;
+}
 ```
 
 ---
 
-## API Endpoints
+## 🔌 API Reference
 
 ### POST `/api/chat/public`
 
-Envía un mensaje y recibe respuesta de la IA.
+Endpoint principal para enviar mensajes. Maneja automáticamente:
+- Creación de conversaciones
+- Guardado de mensajes
+- Respuestas de IA (si `managed_by === 'ai'`)
+- Extracción de información del visitante
 
-**Endpoint completo**: `https://jadmin.tudominio.com/api/chat/public`
+#### Request (Primera vez - sin conversationId)
 
-**Request (Primer mensaje - cuando aún no tienes conversationId)**:
-
-```json
-{
-  "message": "Hola, necesito ayuda",
-  "sourceUrl": "https://tusitio.com/pagina"
-}
+```typescript
+const response = await fetch(`${JADMIN_URL}/api/chat/public`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    message: "Hola, necesito ayuda",
+    sourceUrl: window.location.href  // Opcional: URL de origen
+  })
+});
 ```
 
-**Request (Mensajes siguientes - cuando ya tienes conversationId)**:
+#### Request (Mensajes siguientes)
 
-```json
-{
-  "conversationId": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Gracias por la respuesta"
-}
+```typescript
+const response = await fetch(`${JADMIN_URL}/api/chat/public`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    conversationId: "uuid-de-la-conversacion",
+    message: "Mi nombre es Juan y mi email es juan@email.com"
+  })
+});
 ```
 
-**Request (Con información del usuario - opcional, cuando la tengas)**:
-
-```json
-{
-  "conversationId": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Mi nombre es Juan Pérez",
-  "visitorName": "Juan Pérez",
-  "visitorEmail": "juan@email.com",
-  "visitorPhone": "+52 555 123 4567"
-}
-```
-
-**Nota**: Los campos `visitorName`, `visitorEmail` y `visitorPhone` son **opcionales**. La IA los pedirá durante la conversación. Cuando los tengas, inclúyelos en las peticiones para actualizar la conversación.
-
-**Response**:
+#### Response (Modo IA)
 
 ```json
 {
   "conversationId": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Respuesta de la IA...",
-  "needsHuman": false
+  "message": "¡Hola Juan! Gracias por proporcionar tu información...",
+  "managedBy": "ai",
+  "needsHuman": false,
+  "collectedInfo": {
+    "name": "Juan",
+    "email": "juan@email.com",
+    "reason": null
+  },
+  "infoComplete": false
 }
 ```
 
-**Campos importantes**:
-- `conversationId`: UUID - **Guarda esto para mensajes siguientes**
-- `message`: Texto de la respuesta de la IA
-- `needsHuman`: Boolean - Si es `true`, un agente responderá pronto
+#### Response (Modo Humano - después del handoff)
 
-**Nota**: La IA pedirá `visitorName` y `visitorEmail` de forma conversacional. Debes enviarlos cuando los tengas.
+```json
+{
+  "conversationId": "550e8400-e29b-41d4-a716-446655440000",
+  "message": null,
+  "managedBy": "human",
+  "awaitingHumanResponse": true
+}
+```
 
-### GET `/api/chat/public?conversationId=xxx`
+### GET `/api/chat/public?conversationId={id}`
 
-Obtiene el historial completo de mensajes (incluye respuestas de agentes).
+Obtener historial y estado de una conversación.
 
-**Endpoint completo**: `https://jadmin.tudominio.com/api/chat/public?conversationId=550e8400-e29b-41d4-a716-446655440000`
-
-**Response**:
+#### Response
 
 ```json
 {
   "messages": [
     {
-      "id": "uuid",
-      "content": "Mensaje del visitante",
+      "id": "msg-uuid-1",
+      "content": "Hola, necesito ayuda",
       "sender_type": "visitor",
-      "created_at": "2025-01-15T10:30:00Z"
+      "created_at": "2024-01-15T10:30:00Z"
     },
     {
-      "id": "uuid",
-      "content": "Respuesta de la IA",
+      "id": "msg-uuid-2", 
+      "content": "¡Hola! ¿Podrías indicarme tu nombre?",
       "sender_type": "ai",
-      "ai_model": "mistral-small",
-      "created_at": "2025-01-15T10:30:05Z"
-    },
-    {
-      "id": "uuid",
-      "content": "Respuesta del agente",
-      "sender_type": "agent",
-      "created_at": "2025-01-15T10:35:00Z"
+      "created_at": "2024-01-15T10:30:01Z"
     }
-  ]
+  ],
+  "managedBy": "ai",
+  "collectedInfo": { "name": null, "email": null, "reason": null },
+  "status": "active"
 }
 ```
 
-**sender_type valores**:
-- `visitor`: Mensaje del usuario
-- `ai`: Respuesta generada por IA
-- `agent`: Respuesta de un agente humano
-
 ---
 
-## Implementación del Widget
+## 🔄 Realtime - Escuchar Mensajes
 
-### Componente Básico
+### Arquitectura Limpia (Sin Polling)
 
-```tsx
-import { useState, useEffect } from 'react';
-
-const CHAT_API_URL = process.env.NEXT_PUBLIC_CHAT_API_URL || 'https://jadmin.tudominio.com';
+```typescript
+import { useEffect, useState, useRef } from 'react';
+import { createClient, RealtimeChannel } from '@supabase/supabase-js';
 
 interface Message {
   id: string;
@@ -136,395 +213,672 @@ interface Message {
   created_at: string;
 }
 
-export default function ChatWidget() {
+function useChatMessages(conversationId: string | null, supabase: SupabaseClient | null) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [needsHuman, setNeedsHuman] = useState(false);
-  const [userInfo, setUserInfo] = useState<{
-    name?: string;
-    email?: string;
-    phone?: string;
-  }>({});
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Enviar mensaje
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim()) return;
+  useEffect(() => {
+    if (!conversationId || !supabase) return;
 
-    const userMessage = inputValue.trim();
-    setInputValue('');
+    // 1. Cargar historial inicial (UN solo SELECT)
+    const loadInitialMessages = async () => {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('id, content, sender_type, created_at')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        setMessages(data);
+      }
+      setIsLoading(false);
+    };
+
+    loadInitialMessages();
+
+    // 2. Suscribirse a INSERT (sin refetch, actualización directa)
+    const channel = supabase
+      .channel(`messages:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+          setMessages((prev) => {
+            // Evitar duplicados
+            if (prev.some((m) => m.id === newMessage.id)) return prev;
+            return [...prev, newMessage];
+          });
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    // 3. Cleanup
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [conversationId, supabase]);
+
+  return { messages, isLoading };
+}
+```
+
+### Escuchar Cambios en la Conversación (Handoff)
+
+```typescript
+function useConversationStatus(conversationId: string | null, supabase: SupabaseClient | null) {
+  const [managedBy, setManagedBy] = useState<'ai' | 'human'>('ai');
+
+  useEffect(() => {
+    if (!conversationId || !supabase) return;
+
+    // Cargar estado inicial
+    const loadStatus = async () => {
+      const { data } = await supabase
+        .from('chat_conversations')
+        .select('managed_by')
+        .eq('id', conversationId)
+        .single();
+
+      if (data) {
+        setManagedBy(data.managed_by);
+      }
+    };
+
+    loadStatus();
+
+    // Escuchar cambios (detectar handoff)
+    const channel = supabase
+      .channel(`conversation:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_conversations',
+          filter: `id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const updated = payload.new as { managed_by: 'ai' | 'human' };
+          setManagedBy(updated.managed_by);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, supabase]);
+
+  return { managedBy, isHumanMode: managedBy === 'human' };
+}
+```
+
+---
+
+## 🎨 Widget Completo (React + TypeScript)
+
+```tsx
+'use client';
+
+import { useState, useEffect, useRef, FormEvent } from 'react';
+import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+
+// ============================================================================
+// Configuración
+// ============================================================================
+
+const JADMIN_URL = process.env.NEXT_PUBLIC_JADMIN_URL || 'https://jadmin.tudominio.com';
+
+// ============================================================================
+// Tipos
+// ============================================================================
+
+interface Message {
+  id: string;
+  content: string;
+  sender_type: 'visitor' | 'ai' | 'agent';
+  created_at: string;
+}
+
+interface CollectedInfo {
+  name?: string;
+  email?: string;
+  reason?: string;
+}
+
+interface ConversationState {
+  id: string | null;
+  managedBy: 'ai' | 'human';
+  collectedInfo: CollectedInfo;
+  status: 'active' | 'closed';
+}
+
+// ============================================================================
+// Hook: Supabase Client
+// ============================================================================
+
+function useSupabaseClient() {
+  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const res = await fetch(`${JADMIN_URL}/api/chat/public?config=supabase`);
+        const config = await res.json();
+        const client = createClient(config.url, config.anonKey);
+        setSupabase(client);
+      } catch (error) {
+        console.error('Error initializing Supabase:', error);
+      }
+    };
+    init();
+  }, []);
+
+  return supabase;
+}
+
+// ============================================================================
+// Hook: Mensajes en Tiempo Real
+// ============================================================================
+
+function useChatMessages(conversationId: string | null, supabase: SupabaseClient | null) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    if (!conversationId || !supabase) {
+      setMessages([]);
+      return;
+    }
+
     setIsLoading(true);
 
-    // Agregar mensaje del usuario inmediatamente
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      content: userMessage,
-      sender_type: 'visitor',
-      created_at: new Date().toISOString(),
-    }]);
+    // Cargar historial inicial
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('id, content, sender_type, created_at')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        setMessages(data);
+      }
+      setIsLoading(false);
+    };
+
+    loadMessages();
+
+    // Suscribirse a nuevos mensajes
+    const channel = supabase
+      .channel(`widget-messages:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [conversationId, supabase]);
+
+  return { messages, isLoading };
+}
+
+// ============================================================================
+// Hook: Estado de Conversación (detectar handoff)
+// ============================================================================
+
+function useConversationState(conversationId: string | null, supabase: SupabaseClient | null) {
+  const [state, setState] = useState<ConversationState>({
+    id: null,
+    managedBy: 'ai',
+    collectedInfo: {},
+    status: 'active',
+  });
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    if (!conversationId || !supabase) return;
+
+    setState((prev) => ({ ...prev, id: conversationId }));
+
+    // Cargar estado inicial
+    const loadState = async () => {
+      const { data } = await supabase
+        .from('chat_conversations')
+        .select('managed_by, collected_info, status')
+        .eq('id', conversationId)
+        .single();
+
+      if (data) {
+        setState({
+          id: conversationId,
+          managedBy: data.managed_by || 'ai',
+          collectedInfo: data.collected_info || {},
+          status: data.status || 'active',
+        });
+      }
+    };
+
+    loadState();
+
+    // Escuchar cambios
+    const channel = supabase
+      .channel(`widget-conversation:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_conversations',
+          filter: `id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const updated = payload.new as {
+            managed_by: 'ai' | 'human';
+            collected_info: CollectedInfo;
+            status: 'active' | 'closed';
+          };
+          setState({
+            id: conversationId,
+            managedBy: updated.managed_by,
+            collectedInfo: updated.collected_info || {},
+            status: updated.status,
+          });
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [conversationId, supabase]);
+
+  return state;
+}
+
+// ============================================================================
+// Componente Principal: ChatWidget
+// ============================================================================
+
+export default function ChatWidget() {
+  const supabase = useSupabaseClient();
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { messages, isLoading } = useChatMessages(conversationId, supabase);
+  const conversationState = useConversationState(conversationId, supabase);
+
+  // Auto-scroll cuando llegan mensajes
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Persistir conversationId en localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('jadmin_conversation_id');
+    if (stored) {
+      setConversationId(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (conversationId) {
+      localStorage.setItem('jadmin_conversation_id', conversationId);
+    }
+  }, [conversationId]);
+
+  // Enviar mensaje
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isSending) return;
+
+    const messageText = inputValue.trim();
+    setInputValue('');
+    setIsSending(true);
 
     try {
-      // Preparar body - incluir información del usuario solo si la tienes
-      const body: Record<string, string> = {
-        message: userMessage,
-        sourceUrl: window.location.href,
-      };
-
-      if (conversationId) {
-        body.conversationId = conversationId;
-      }
-
-      // Incluir información del usuario si la tienes (opcional)
-      if (userInfo.name) body.visitorName = userInfo.name;
-      if (userInfo.email) body.visitorEmail = userInfo.email;
-      if (userInfo.phone) body.visitorPhone = userInfo.phone;
-
-      const response = await fetch(`${CHAT_API_URL}/api/chat/public`, {
+      const response = await fetch(`${JADMIN_URL}/api/chat/public`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          conversationId,
+          message: messageText,
+          sourceUrl: window.location.href,
+        }),
       });
-
-      if (!response.ok) {
-        throw new Error('Error al enviar mensaje');
-      }
 
       const data = await response.json();
 
-      // Agregar respuesta de la IA
-      setMessages(prev => [...prev, {
-        id: data.conversationId + '-ai-' + Date.now(),
-        content: data.message,
-        sender_type: 'ai',
-        created_at: new Date().toISOString(),
-      }]);
-
-      // Guardar conversationId para mensajes siguientes
-      if (!conversationId) {
+      if (data.conversationId && !conversationId) {
         setConversationId(data.conversationId);
       }
 
-      // Actualizar información del usuario si la IA la menciona o la extraes de las respuestas
-      // La IA pedirá nombre y email, tú decides cómo extraerlos y guardarlos en userInfo
-      
-      setNeedsHuman(data.needsHuman);
+      // El mensaje del visitante y la respuesta de IA llegarán via Realtime
+      // No necesitamos hacer nada más aquí
     } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, {
-        id: 'error-' + Date.now(),
-        content: 'Error al enviar mensaje. Por favor intenta de nuevo.',
-        sender_type: 'ai',
-        created_at: new Date().toISOString(),
-      }]);
+      console.error('Error sending message:', error);
+      // Restaurar mensaje si falló
+      setInputValue(messageText);
     } finally {
-      setIsLoading(false);
+      setIsSending(false);
     }
   };
 
-  // Polling para respuestas de agentes (cuando needsHuman es true)
-  useEffect(() => {
-    if (!conversationId || !needsHuman) return;
+  // Iniciar nueva conversación
+  const startNewConversation = () => {
+    localStorage.removeItem('jadmin_conversation_id');
+    setConversationId(null);
+  };
 
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`${CHAT_API_URL}/api/chat/public?conversationId=${conversationId}`);
-        if (response.ok) {
-          const data = await response.json();
-          const currentIds = new Set(messages.map(m => m.id));
-          
-          // Buscar nuevos mensajes de agentes
-          const newMessages = data.messages.filter((m: Message) => 
-            m.sender_type === 'agent' && !currentIds.has(m.id)
-          );
-          
-          if (newMessages.length > 0) {
-            setMessages(prev => [...prev, ...newMessages]);
-            setNeedsHuman(false); // Agente respondió
-          }
-        }
-      } catch (error) {
-        console.error('Error polling:', error);
-      }
-    }, 5000); // Poll cada 5 segundos
-
-    return () => clearInterval(interval);
-  }, [conversationId, needsHuman, messages]);
+  if (!isOpen) {
+    return (
+      <button
+        onClick={() => setIsOpen(true)}
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          width: '60px',
+          height: '60px',
+          borderRadius: '50%',
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          border: 'none',
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '24px',
+          zIndex: 9999,
+        }}
+      >
+        💬
+      </button>
+    );
+  }
 
   return (
-    <div className="chat-widget">
-      <div className="messages">
-        {messages.map(msg => (
-          <div key={msg.id} className={`message ${msg.sender_type}`}>
-            <div className="message-header">
-              <span>
-                {msg.sender_type === 'visitor' && 'Tú'}
-                {msg.sender_type === 'ai' && 'Asistente IA'}
-                {msg.sender_type === 'agent' && 'Agente'}
-              </span>
-              <span className="time">
-                {new Date(msg.created_at).toLocaleTimeString('es-ES', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
-              </span>
-            </div>
-            <div className="message-content">{msg.content}</div>
+    <div
+      style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        width: '380px',
+        height: '520px',
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        zIndex: 9999,
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: '16px',
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 600, fontSize: '16px' }}>Soporte JAdmin</div>
+          <div style={{ fontSize: '12px', opacity: 0.9 }}>
+            {conversationState.managedBy === 'human'
+              ? '👤 Conectado con un agente'
+              : '🤖 Asistente virtual'}
           </div>
-        ))}
-        {isLoading && <div className="typing-indicator">Escribiendo...</div>}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {conversationId && (
+            <button
+              onClick={startNewConversation}
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                border: 'none',
+                color: 'white',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              Nueva
+            </button>
+          )}
+          <button
+            onClick={() => setIsOpen(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '20px',
+              padding: '0 4px',
+            }}
+          >
+            ×
+          </button>
+        </div>
       </div>
 
-      {needsHuman && (
-        <div className="notice">
-          Un agente te contactará pronto
+      {/* Indicador de handoff */}
+      {conversationState.managedBy === 'human' && (
+        <div
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#dcfce7',
+            color: '#166534',
+            fontSize: '12px',
+            textAlign: 'center',
+          }}
+        >
+          ✅ Un agente de soporte está atendiendo tu consulta
         </div>
       )}
 
-      <form onSubmit={handleSendMessage} className="chat-input">
-        <input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Escribe un mensaje..."
-          disabled={isLoading}
-        />
-        <button type="submit" disabled={isLoading || !inputValue.trim()}>
-          Enviar
-        </button>
-      </form>
-    </div>
-  );
-}
-```
+      {/* Messages */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}
+      >
+        {!conversationId && messages.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#6b7280', padding: '40px 20px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>👋</div>
+            <div style={{ fontWeight: 500 }}>¡Hola!</div>
+            <div style={{ fontSize: '14px', marginTop: '4px' }}>
+              Escribe tu mensaje para comenzar
+            </div>
+          </div>
+        )}
 
----
+        {isLoading && (
+          <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>
+            Cargando mensajes...
+          </div>
+        )}
 
-## Flujo de Implementación
-
-### 1. Usuario envía primer mensaje (sin información)
-
-```typescript
-// Usuario escribe: "Hola"
-// Envías al API:
-POST /api/chat/public
-{
-  "message": "Hola",
-  "sourceUrl": "https://tusitio.com"
-}
-
-// Respuesta:
-{
-  "conversationId": "uuid-here",
-  "message": "¡Hola! Para poder ayudarte mejor, ¿podrías decirme tu nombre?",
-  "needsHuman": false
-}
-```
-
-### 2. Usuario proporciona nombre
-
-```typescript
-// Usuario escribe: "Juan Pérez"
-// Opcionalmente extraes y guardas: userInfo.name = "Juan Pérez"
-// Envías al API:
-POST /api/chat/public
-{
-  "conversationId": "uuid-here",
-  "message": "Juan Pérez"
-  // Opcional: "visitorName": "Juan Pérez" si quieres actualizar la conversación
-}
-
-// Respuesta:
-{
-  "conversationId": "uuid-here",
-  "message": "Gracias Juan. Ahora, ¿podrías proporcionarme tu email?",
-  "needsHuman": false
-}
-```
-
-### 3. Usuario proporciona email
-
-```typescript
-// Usuario escribe: "juan@email.com"
-// Opcionalmente extraes y guardas: userInfo.email = "juan@email.com"
-// Envías al API:
-POST /api/chat/public
-{
-  "conversationId": "uuid-here",
-  "message": "juan@email.com"
-  // Opcional: "visitorEmail": "juan@email.com" si quieres actualizar la conversación
-}
-
-// Respuesta:
-{
-  "conversationId": "uuid-here",
-  "message": "Perfecto Juan. ¿En qué puedo ayudarte hoy?",
-  "needsHuman": false
-}
-```
-
-### 4. Usuario hace consulta técnica
-
-```typescript
-// Usuario escribe: "Tengo un problema con mi cuenta"
-// Envías al API:
-POST /api/chat/public
-{
-  "conversationId": "uuid-here",
-  "message": "Tengo un problema con mi cuenta"
-  // Opcional: puedes incluir visitorName y visitorEmail si los tienes
-}
-
-// Respuesta:
-{
-  "conversationId": "uuid-here",
-  "message": "Entiendo tu problema. Te puedo ayudar con...",
-  "needsHuman": false
-}
-```
-
-### 5. Si necesita atención humana
-
-```typescript
-// Respuesta del API:
-{
-  "conversationId": "uuid-here",
-  "message": "Este caso requiere atención especializada. Un agente revisará tu solicitud.",
-  "needsHuman": true  // ← Importante: activa polling
-}
-
-// Inicias polling cada 5 segundos:
-GET /api/chat/public?conversationId=uuid-here
-
-// Cuando el agente responda, recibirás:
-{
-  "messages": [
-    // ... mensajes anteriores ...
-    {
-      "id": "new-uuid",
-      "content": "Hola Juan, soy el agente. Te puedo ayudar con...",
-      "sender_type": "agent",  // ← Nuevo mensaje de agente
-      "created_at": "2025-01-15T10:35:00Z"
-    }
-  ]
-}
-```
-
----
-
-## Checklist de Implementación
-
-- [ ] Configurar URL del API de JAdmin
-- [ ] Implementar función para enviar mensajes (POST)
-- [ ] Enviar primer mensaje sin requerir información del usuario
-- [ ] Guardar `conversationId` de la primera respuesta
-- [ ] Incluir `conversationId` en todos los mensajes siguientes
-- [ ] (Opcional) Extraer `visitorName` y `visitorEmail` cuando el usuario los proporcione
-- [ ] (Opcional) Incluir `visitorName` y `visitorEmail` en las peticiones cuando los tengas
-- [ ] Mostrar respuestas de la IA
-- [ ] Verificar flag `needsHuman` en cada respuesta
-- [ ] Iniciar polling (GET) cada 5 segundos cuando `needsHuman` es `true`
-- [ ] Detener polling cuando recibas respuesta de agente
-- [ ] Mostrar mensajes de agentes cuando lleguen
-- [ ] Manejar errores de red
-
----
-
-## Notas Importantes
-
-1. **No se requiere información del usuario desde el inicio** - puedes empezar el chat sin `visitorName` ni `visitorEmail`
-2. **La IA pedirá nombre y email** de forma conversacional durante la conversación
-3. **Los campos `visitorName`, `visitorEmail` y `visitorPhone` son opcionales** - inclúyelos cuando los tengas para actualizar la conversación
-4. **Guarda el `conversationId`** de la primera respuesta y úsalo en todos los mensajes siguientes
-5. **Puedes actualizar la información** enviando `visitorName`/`visitorEmail` en cualquier mensaje posterior
-6. **Polling solo cuando `needsHuman` es `true`** - no necesitas hacerlo constantemente
-7. **CORS está habilitado** - puedes llamar desde cualquier dominio
-8. **Usa URLs absolutas** - no rutas relativas
-
----
-
-## Ejemplo Mínimo Funcional
-
-```tsx
-import { useState } from 'react';
-
-const API_URL = 'https://jadmin.tudominio.com';
-
-export default function ChatWidget() {
-  const [messages, setMessages] = useState([]);
-  const [conversationId, setConversationId] = useState(null);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    
-    const userMsg = input;
-    setInput('');
-    setLoading(true);
-    
-    // Agregar mensaje del usuario
-    setMessages(prev => [...prev, { content: userMsg, sender_type: 'visitor' }]);
-    
-    try {
-      // Preparar body - solo incluir conversationId si lo tienes
-      const body: Record<string, string> = {
-        message: userMsg,
-        sourceUrl: window.location.href,
-      };
-      
-      if (conversationId) {
-        body.conversationId = conversationId;
-      }
-      
-      // Opcional: Si extraes nombre/email de las respuestas, inclúyelos aquí
-      // body.visitorName = "Juan Pérez";
-      // body.visitorEmail = "juan@email.com";
-      
-      const res = await fetch(`${API_URL}/api/chat/public`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      
-      const data = await res.json();
-      
-      // Guardar conversationId
-      if (!conversationId) {
-        setConversationId(data.conversationId);
-      }
-      
-      // Agregar respuesta de la IA
-      setMessages(prev => [...prev, { 
-        content: data.message, 
-        sender_type: 'ai' 
-      }]);
-      
-    } catch (error) {
-      alert('Error al enviar mensaje');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <div>
-        {messages.map((msg, i) => (
-          <div key={i} className={msg.sender_type}>
-            {msg.content}
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              display: 'flex',
+              justifyContent: msg.sender_type === 'visitor' ? 'flex-end' : 'flex-start',
+            }}
+          >
+            <div
+              style={{
+                maxWidth: '80%',
+                padding: '10px 14px',
+                borderRadius: '12px',
+                fontSize: '14px',
+                lineHeight: '1.4',
+                ...(msg.sender_type === 'visitor'
+                  ? {
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      borderBottomRightRadius: '4px',
+                    }
+                  : msg.sender_type === 'ai'
+                  ? {
+                      backgroundColor: '#f3e8ff',
+                      color: '#6b21a8',
+                      borderBottomLeftRadius: '4px',
+                    }
+                  : {
+                      backgroundColor: '#dcfce7',
+                      color: '#166534',
+                      borderBottomLeftRadius: '4px',
+                    }),
+              }}
+            >
+              {msg.sender_type !== 'visitor' && (
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    marginBottom: '4px',
+                    opacity: 0.8,
+                  }}
+                >
+                  {msg.sender_type === 'ai' ? '🤖 Asistente' : '👤 Agente'}
+                </div>
+              )}
+              {msg.content}
+            </div>
           </div>
         ))}
+
+        {isSending && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '12px',
+                backgroundColor: '#f3f4f6',
+                color: '#6b7280',
+                fontSize: '14px',
+              }}
+            >
+              <span style={{ animation: 'pulse 1.5s infinite' }}>●</span>
+              <span style={{ animation: 'pulse 1.5s infinite 0.2s' }}>●</span>
+              <span style={{ animation: 'pulse 1.5s infinite 0.4s' }}>●</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }}>
-        <input 
-          value={input} 
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Escribe un mensaje..."
-          disabled={loading}
-        />
-        <button disabled={loading}>Enviar</button>
-      </form>
+
+      {/* Input */}
+      {conversationState.status === 'active' ? (
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            padding: '12px 16px',
+            borderTop: '1px solid #e5e7eb',
+            display: 'flex',
+            gap: '8px',
+          }}
+        >
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Escribe tu mensaje..."
+            disabled={isSending}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              fontSize: '14px',
+              outline: 'none',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!inputValue.trim() || isSending}
+            style={{
+              padding: '10px 16px',
+              backgroundColor: inputValue.trim() && !isSending ? '#3b82f6' : '#9ca3af',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: inputValue.trim() && !isSending ? 'pointer' : 'not-allowed',
+              fontSize: '14px',
+              fontWeight: 500,
+            }}
+          >
+            Enviar
+          </button>
+        </form>
+      ) : (
+        <div
+          style={{
+            padding: '16px',
+            textAlign: 'center',
+            backgroundColor: '#f3f4f6',
+            color: '#6b7280',
+            fontSize: '14px',
+          }}
+        >
+          Esta conversación ha sido cerrada
+        </div>
+      )}
     </div>
   );
 }
@@ -532,6 +886,158 @@ export default function ChatWidget() {
 
 ---
 
-## Soporte
+## 🚀 Integración Rápida (Script Embebido)
 
-Para dudas o problemas, contacta al equipo de JAdmin.
+Para sitios que no usan React, puedes crear un script embebible:
+
+### 1. Crear el archivo del widget
+
+```javascript
+// public/widget.js
+(function() {
+  const JADMIN_URL = 'https://jadmin.tudominio.com';
+  
+  // Cargar Supabase
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  script.onload = initWidget;
+  document.head.appendChild(script);
+  
+  async function initWidget() {
+    // Obtener config
+    const configRes = await fetch(`${JADMIN_URL}/api/chat/public?config=supabase`);
+    const config = await configRes.json();
+    const supabase = window.supabase.createClient(config.url, config.anonKey);
+    
+    // Crear UI del widget...
+    // (implementación similar al componente React)
+  }
+})();
+```
+
+### 2. Incluir en el sitio
+
+```html
+<!-- En cualquier página HTML -->
+<script src="https://jadmin.tudominio.com/widget.js"></script>
+```
+
+---
+
+## 📱 Variables de Estado Importantes
+
+| Variable | Tipo | Descripción |
+|----------|------|-------------|
+| `conversationId` | `string \| null` | UUID de la conversación activa |
+| `managedBy` | `'ai' \| 'human'` | Quién maneja la conversación |
+| `collectedInfo` | `object` | Info recopilada: `{ name, email, reason }` |
+| `status` | `'active' \| 'closed'` | Estado de la conversación |
+
+---
+
+## 🔔 Notificaciones
+
+### Detectar mensajes del agente
+
+```typescript
+// En el handler de Realtime
+.on('postgres_changes', { event: 'INSERT', ... }, (payload) => {
+  const newMsg = payload.new as Message;
+  
+  // Si es mensaje de agente y el widget está cerrado
+  if (newMsg.sender_type === 'agent' && !isWidgetOpen) {
+    // Mostrar notificación del navegador
+    if (Notification.permission === 'granted') {
+      new Notification('Nuevo mensaje de soporte', {
+        body: newMsg.content.substring(0, 100),
+        icon: '/favicon.ico'
+      });
+    }
+    
+    // Mostrar badge o indicador visual
+    showUnreadIndicator();
+  }
+})
+```
+
+### Solicitar permisos
+
+```typescript
+useEffect(() => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}, []);
+```
+
+---
+
+## 🎯 Flujo del Handoff
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     FLUJO DE HANDOFF                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. VISITANTE envía mensaje                                     │
+│     └─► managed_by = 'ai'                                       │
+│     └─► IA responde y recopila info                             │
+│                                                                 │
+│  2. IA recopila: nombre + email + motivo                        │
+│     └─► needs_human_attention = true                            │
+│     └─► Aparece en panel de soporte                             │
+│                                                                 │
+│  3. AGENTE abre el chat en panel de soporte                     │
+│     └─► managed_by sigue = 'ai'                                 │
+│                                                                 │
+│  4. AGENTE envía primer mensaje                                 │
+│     └─► 🔄 HANDOFF AUTOMÁTICO                                   │
+│     └─► managed_by = 'human'                                    │
+│     └─► IA se DESACTIVA para este chat                          │
+│                                                                 │
+│  5. VISITANTE envía más mensajes                                │
+│     └─► POST /api/chat/public                                   │
+│     └─► response.message = null (sin IA)                        │
+│     └─► response.managedBy = 'human'                            │
+│     └─► Mensaje queda esperando respuesta del agente            │
+│                                                                 │
+│  6. AGENTE responde                                             │
+│     └─► Visitante recibe via Realtime                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ❓ FAQ
+
+### ¿Por qué no usar polling para los mensajes?
+
+El polling tiene varios problemas:
+- Mayor latencia (delay entre mensaje y visualización)
+- Más carga en el servidor
+- Mayor consumo de datos del usuario
+- No es "tiempo real" verdadero
+
+Con Supabase Realtime, los mensajes llegan **instantáneamente** via WebSocket.
+
+### ¿Cómo sé si un humano está atendiendo?
+
+Observa el campo `managedBy` en la respuesta del POST o en el estado de la conversación:
+- `managedBy === 'ai'`: La IA responde automáticamente
+- `managedBy === 'human'`: Un agente está atendiendo
+
+### ¿Qué pasa si el agente no responde?
+
+El mensaje del visitante queda guardado y visible en el panel de soporte. El agente puede responder cuando esté disponible, y el visitante recibirá la respuesta via Realtime.
+
+### ¿Puedo personalizar el System Prompt de la IA?
+
+Sí, edita el archivo `lib/ai-provider.ts` en el servidor de JAdmin.
+
+---
+
+## 📄 Licencia
+
+MIT License - JAdmin Chat Widget
+

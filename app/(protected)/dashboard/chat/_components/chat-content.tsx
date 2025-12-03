@@ -87,16 +87,110 @@ export function ChatContent() {
   // Fetch users for assignment
   const { data: users } = useQuery(trpc.users.getAll.queryOptions());
 
-  // Send message mutation
+  // Send message mutation with optimistic update
   const { mutate: sendMessage, isPending: isSending } = useMutation({
     ...trpc.chat.sendMessage.mutationOptions({
-      onSuccess: () => {
-        setNewMessage("");
-        queryClient.invalidateQueries({ queryKey: [["chat", "getMessages"]] });
-        queryClient.invalidateQueries({ queryKey: [["chat", "getConversations"]] });
+      onMutate: async (variables) => {
+        const messagesQueryKey = trpc.chat.getMessages.queryKey({ conversationId: variables.conversationId });
+        const conversationsQueryKey = trpc.chat.getConversations.queryKey();
+
+        // Cancel outgoing refetches
+        await queryClient.cancelQueries({ queryKey: messagesQueryKey });
+        await queryClient.cancelQueries({ queryKey: conversationsQueryKey });
+
+        // Snapshot previous values
+        const previousMessages = queryClient.getQueryData<ChatMessage[]>(messagesQueryKey);
+        const previousConversations = queryClient.getQueryData<ChatConversationListItem[]>(conversationsQueryKey);
+
+        // Optimistically update messages
+        const optimisticMessage: ChatMessage = {
+          id: `temp-${Date.now()}`,
+          conversation_id: variables.conversationId,
+          content: variables.content,
+          sender_type: "agent",
+          ai_model: null,
+          agent_id: null,
+          created_at: new Date().toISOString(),
+        };
+
+        queryClient.setQueryData<ChatMessage[]>(
+          messagesQueryKey,
+          (old) => (old ? [...old, optimisticMessage] : [optimisticMessage])
+        );
+
+        // Scroll to bottom after optimistic update
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
+
+        // Optimistically update conversations list
+        queryClient.setQueryData<ChatConversationListItem[]>(
+          conversationsQueryKey,
+          (old) => {
+            if (!old) return old;
+            return old.map((conv) => {
+              if (conv.id === variables.conversationId) {
+                return {
+                  ...conv,
+                  last_message: variables.content.substring(0, 100),
+                  last_message_at: new Date().toISOString(),
+                  message_count: conv.message_count + 1,
+                  needs_human_attention: false,
+                };
+              }
+              return conv;
+            });
+          }
+        );
+
+        // Update selected conversation state
+        if (selectedConversation?.id === variables.conversationId) {
+          setSelectedConversation((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              last_message: variables.content.substring(0, 100),
+              last_message_at: new Date().toISOString(),
+              message_count: prev.message_count + 1,
+              needs_human_attention: false,
+            };
+          });
+        }
+
+        return { previousMessages, previousConversations, messagesQueryKey, conversationsQueryKey };
       },
-      onError: (error) => {
+      onError: (error, variables, context) => {
+        // Rollback on error
+        if (context?.previousMessages && context?.messagesQueryKey) {
+          queryClient.setQueryData(context.messagesQueryKey, context.previousMessages);
+        }
+        if (context?.previousConversations && context?.conversationsQueryKey) {
+          queryClient.setQueryData(context.conversationsQueryKey, context.previousConversations);
+        }
         toast.error(`Error al enviar mensaje: ${error.message}`);
+      },
+      onSuccess: (data, variables, context) => {
+        // Replace optimistic message with real one
+        if (context?.messagesQueryKey) {
+          queryClient.setQueryData<ChatMessage[]>(
+            context.messagesQueryKey,
+            (old) => {
+              if (!old) return [data];
+              // Remove temporary message and add real one
+              return old.filter((msg) => !msg.id.startsWith("temp-")).concat(data);
+            }
+          );
+        }
+        // Invalidate to ensure everything is in sync
+        queryClient.invalidateQueries({ queryKey: trpc.chat.getMessages.queryKey({ conversationId: variables.conversationId }) });
+        queryClient.invalidateQueries({ queryKey: trpc.chat.getConversations.queryKey() });
+      },
+      onSettled: () => {
+        // Input is already cleared in handleSendMessage
+        // Scroll to bottom after message is added
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
       },
     }),
   });
@@ -137,10 +231,13 @@ export function ChatContent() {
   // Handle send message
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedConversation?.id || !newMessage.trim()) return;
+    if (!selectedConversation?.id || !newMessage.trim() || isSending) return;
+    const messageContent = newMessage.trim();
+    // Clear input immediately for better UX
+    setNewMessage("");
     sendMessage({
       conversationId: selectedConversation.id,
-      content: newMessage.trim(),
+      content: messageContent,
     });
   };
 
@@ -281,7 +378,7 @@ export function ChatContent() {
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{conv.visitor_email}</p>
                       {conv.last_message && (
-                        <p className="text-xs text-muted-foreground truncate mt-1">
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words">
                           {conv.last_message}
                         </p>
                       )}

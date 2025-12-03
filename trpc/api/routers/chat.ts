@@ -37,6 +37,8 @@ export const chatRouter = createTRPCRouter({
           status,
           needs_human_attention,
           is_resolved,
+          managed_by,
+          collected_info,
           message_count,
           last_message_at,
           created_at,
@@ -160,10 +162,13 @@ export const chatRouter = createTRPCRouter({
         });
       }
 
-      // Update conversation - mark as handled by human
+      // Update conversation - handoff a humano y marcar como atendido
+      // Nota: El trigger 'auto_handoff_to_human' también actualiza managed_by,
+      // pero lo hacemos explícito aquí para mayor claridad
       await ctx.supabase
         .from('chat_conversations')
         .update({
+          managed_by: 'human', // HANDOFF: La IA deja de responder
           needs_human_attention: false,
           last_message_at: new Date().toISOString(),
         })
@@ -223,7 +228,25 @@ export const chatRouter = createTRPCRouter({
       const { data, error } = await ctx.supabase
         .from('chat_conversations')
         .select(`
-          *,
+          id,
+          visitor_name,
+          visitor_email,
+          visitor_phone,
+          visitor_company,
+          status,
+          needs_human_attention,
+          is_resolved,
+          managed_by,
+          collected_info,
+          message_count,
+          ai_message_count,
+          agent_message_count,
+          last_message_at,
+          created_at,
+          updated_at,
+          source_url,
+          assigned_to,
+          closed_at,
           assigned:users!assigned_to (
             id,
             name

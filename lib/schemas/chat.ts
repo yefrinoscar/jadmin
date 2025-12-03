@@ -3,6 +3,16 @@ import { z } from 'zod';
 // Enums
 export const ChatConversationStatusEnum = z.enum(['active', 'closed', 'archived']);
 export const ChatMessageSenderTypeEnum = z.enum(['visitor', 'ai', 'agent']);
+export const ChatConversationManagerEnum = z.enum(['ai', 'human']);
+
+// Collected info schema (información recopilada por la IA)
+export const CollectedInfoSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().optional(),
+  reason: z.string().optional(),
+  phone: z.string().optional(),
+  company: z.string().optional(),
+}).default({});
 
 // Conversation schemas
 export const ChatConversationSchema = z.object({
@@ -14,6 +24,8 @@ export const ChatConversationSchema = z.object({
   status: ChatConversationStatusEnum,
   needs_human_attention: z.boolean(),
   is_resolved: z.boolean(),
+  managed_by: ChatConversationManagerEnum.default('ai'),
+  collected_info: CollectedInfoSchema.nullable(),
   message_count: z.number(),
   ai_message_count: z.number(),
   agent_message_count: z.number(),
@@ -34,6 +46,8 @@ export const ChatConversationListItemSchema = z.object({
   status: ChatConversationStatusEnum,
   needs_human_attention: z.boolean(),
   is_resolved: z.boolean(),
+  managed_by: ChatConversationManagerEnum.default('ai'),
+  collected_info: CollectedInfoSchema.nullable(),
   message_count: z.number(),
   last_message_at: z.string(),
   created_at: z.string(),
@@ -90,6 +104,8 @@ export type ChatConversationListItem = z.infer<typeof ChatConversationListItemSc
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatConversationStatus = z.infer<typeof ChatConversationStatusEnum>;
 export type ChatMessageSenderType = z.infer<typeof ChatMessageSenderTypeEnum>;
+export type ChatConversationManager = z.infer<typeof ChatConversationManagerEnum>;
+export type CollectedInfo = z.infer<typeof CollectedInfoSchema>;
 
 // Status options for filters
 export const chatConversationStatuses = [
