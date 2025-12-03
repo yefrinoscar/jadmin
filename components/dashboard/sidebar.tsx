@@ -20,8 +20,18 @@ import { useState } from "react";
 import { useTRPC } from "@/trpc/client"
 import { useQueryClient } from "@tanstack/react-query";
 import { SignOutButton, useUser } from "@clerk/nextjs";
+import type { LucideIcon } from "lucide-react";
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  disabled?: boolean;
+  adminOnly?: boolean;
+  productionOnly?: boolean;
+}
+
+const navigation: NavigationItem[] = [
   { name: "Panel de Control", href: "/dashboard", icon: Home, disabled: true },
   { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon, disabled: true },
   { name: "Clientes", href: "/dashboard/clients", icon: Building2, disabled: true },
