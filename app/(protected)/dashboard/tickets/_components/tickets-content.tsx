@@ -10,6 +10,8 @@ export function TicketsContent() {
   // With useSuspenseQuery, the data is returned directly
   const { data: tickets } = useQuery(trpc.tickets.getAll.queryOptions());
 
+  console.log('tickets', tickets)
+
   return (
     <div className="space-y-4">
       <TicketsTable 

@@ -11,6 +11,8 @@ import { InteractiveStatusSelector } from "../interactive-status-selector"
 import { InteractivePrioritySelector } from "../interactive-priority-selector"
 import { AssignUserPopover } from "../assign-user-popover"
 import { EditableField } from "./editable-field"
+import { TicketPhotos } from "./ticket-photos"
+import { useUser } from "@clerk/nextjs"
 
 interface TicketDetailsProps {
   ticket: TicketListItem
@@ -21,57 +23,63 @@ export function TicketDetails({
   ticket,
   users
 }: TicketDetailsProps) {
+  const { user } = useUser();
+
+  const userRole = user?.publicMetadata?.role;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-6">
 
       <div className="space-y-3">
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 
           <EditableField label="Estado">
-            <InteractiveStatusSelector 
+            <InteractiveStatusSelector
               ticketId={ticket.id}
               currentStatus={ticket.status}
-            />
-          </EditableField>
-          
-          <EditableField label="Prioridad">
-            <InteractivePrioritySelector 
-              ticketId={ticket.id}
-              currentPriority={ticket.priority}
-            />
-          </EditableField>
-          
-          <EditableField label="Asignado a">
-            <AssignUserPopover 
-              ticketId={ticket.id}
-              currentAssignedUser={ticket.assigned_user ? {
-                ...ticket.assigned_user,
-                email: "",
-                role: "technician" as const,
-                auth_id: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              } : null}
+              disabled={userRole === 'client' ? true : false}
             />
           </EditableField>
 
-          <EditableField label="Empresa">
-            <div className="flex items-center gap-1.5">
-              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs">{ticket.client_company_name || "Sin empresa"}</span>
-            </div>
+          <EditableField label="Prioridad">
+            <InteractivePrioritySelector
+              ticketId={ticket.id}
+              currentPriority={ticket.priority}
+              disabled={userRole === 'client' ? true : false}
+            />
           </EditableField>
+
+          <EditableField label="Asignado a">
+            <AssignUserPopover
+              ticketId={ticket.id}
+              currentAssignedUser={ticket.assigned_user?.id || null}
+              disabled={userRole === 'client' ? true : false}
+            />
+          </EditableField>
+
+
+          {userRole !== 'client' && <EditableField label="Empresa"><div className="flex items-center gap-1.5">
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs">{ticket.client_company_name || "Sin empresa"}</span>
+          </div></EditableField>}
+
 
 
 
 
           <EditableField label="Descripción">
             <div className="text-xs">
-              {ticket.title}
+              {ticket.description || ticket.title}
             </div>
           </EditableField>
+
+          {/* Photos section */}
+          {ticket.photo_url && ticket.photo_url.length > 0 && (
+            <div className="col-span-1 md:col-span-2">
+              <TicketPhotos photos={ticket.photo_url} />
+            </div>
+          )}
         </div>
       </div>
     </div>

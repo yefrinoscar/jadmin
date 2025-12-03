@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Check, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -31,18 +31,25 @@ type AssignableUser = {
 
 interface AssignUserPopoverProps {
   ticketId: string;
-  currentAssignedUser: UserType | null;
-  onAssignmentChange?: (user: UserType | null) => void;
+  currentAssignedUser: string | null;
+  disabled?: boolean;
 }
 
 export function AssignUserPopover({
   ticketId,
   currentAssignedUser,
-  onAssignmentChange,
+  disabled = false,
 }: AssignUserPopoverProps) {
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [localCurrentUser, setLocalCurrentUser] = useState<string | null>(currentAssignedUser);
 
+  // Update local current user when prop changes
+  useEffect(() => {
+    setLocalCurrentUser(currentAssignedUser);
+  }, [currentAssignedUser]);
+
+  
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const { data: assignableUsers, isLoading } = useQuery(trpc.users.getAssignableUsers.queryOptions());
@@ -52,93 +59,66 @@ export function AssignUserPopover({
       onMutate: async (newData) => {
         // Optimistic update
         setIsUpdating(true);
-        
-        // Cancel any outgoing refetches
-        await queryClient.cancelQueries({
-          queryKey: ["tickets", "all"],
-        });
-        
-        // Snapshot the previous value
-        const previousTickets = queryClient.getQueryData([
-          "tickets",
-          "all",
-        ]);
-        
+        const queryKey = [['tickets', 'getAll'], { type: 'query' }]
+
         // Find the user to be assigned
         const userId = newData.assigned_to;
-        const assignedUser = userId 
-          ? assignableUsers?.find(u => u.id === userId) || null
-          : null;
-        
-        // Convert to full UserType for the callback (add missing fields)
-        const fullUserType = assignedUser ? {
-          ...assignedUser,
-          auth_id: null, // Add the missing auth_id field
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } : null;
-        
+
+        setLocalCurrentUser(userId || null);
+
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries({
+          queryKey: queryKey
+        });
+
+        // Snapshot the previous value
+        const previousTickets = queryClient.getQueryData(queryKey);
+
         // Optimistically update the cache
-        queryClient.setQueryData([
-          "tickets",
-          "all",
-        ], (old: any) => {
+        queryClient.setQueryData(queryKey, (old: any) => {
           // Handle both array and paginated data structures
           if (!old) return old;
-          
+
           // If it's an array
           if (Array.isArray(old)) {
-            return old.map((ticket) => 
-              ticket.id === newData.id 
-                ? { ...ticket, assigned_to: fullUserType }
+            return old.map((ticket) =>
+              ticket.id === newData.id
+                ? {
+                  ...ticket,
+                  assigned_user: {
+                    id: userId,
+                    name: assignableUsers?.find(u => u.id === userId)?.name || '',
+                  }
+                }
                 : ticket
             );
           }
-          
-          // If it's paginated data
-          if (old.pages) {
-            return {
-              ...old,
-              pages: old.pages.map((page: any) => ({
-                ...page,
-                tickets: page.tickets.map((ticket: any) =>
-                  ticket.id === newData.id
-                    ? { ...ticket, assigned_to: fullUserType }
-                    : ticket
-                ),
-              })),
-            };
-          }
-          
+
           return old;
         });
-        
-        // Call the callback for parent component updates
-        onAssignmentChange?.(fullUserType);
-        
-        return { previousTickets };
+
+        return { previousTickets, queryKey };
       },
       onSuccess: () => {
-        toast.success("Asignación de ticket actualizada exitosamente");
+        // Don't show success toast for optimistic updates
         setOpen(false);
         setIsUpdating(false);
       },
       onError: (error, newData, context) => {
         // Revert optimistic update on error
         if (context?.previousTickets) {
-          queryClient.setQueryData([
-            "tickets",
-            "all",
-          ], context.previousTickets);
+          queryClient.setQueryData(context.queryKey, context.previousTickets);
         }
-        
+
         toast.error("Error al actualizar la asignación: " + error.message);
         setIsUpdating(false);
       },
       onSettled: () => {
-        // Always refetch after error or success
+        // Quietly refetch in the background to ensure data consistency
         queryClient.invalidateQueries({
-          queryKey: ["tickets", "all"],
+          queryKey: [['tickets', 'getAll']],
+          // Don't refetch immediately to avoid UI flicker
+          refetchType: 'none'
         });
       }
     })
@@ -146,18 +126,27 @@ export function AssignUserPopover({
 
   const handleAssignUser = async (userId: string | null) => {
     if (isUpdating) return;
-    
-    // The mutation will handle setting isUpdating and optimistic updates
-    await updateTicket({
-      id: ticketId,
-      assigned_to: userId,
-    }).catch((error) => {
+
+    try {
+      // The mutation will handle setting isUpdating and optimistic updates
+      await updateTicket({
+        id: ticketId,
+        assigned_to: userId,
+      });
+      // Close popover immediately for better UX
+      setOpen(false);
+    } catch (error) {
       console.error("Error assigning user:", error);
-    });
+      // Error toast is already handled in onError callback
+    }
   };
 
-  const getCurrentUserDisplay = () => {
-    if (!currentAssignedUser) {
+  const getCurrentUserDisplay = (userId: string | null) => {
+    const assignedUser = userId
+    ? assignableUsers?.find(u => u.id === userId) || null
+    : null;
+    
+    if (!assignedUser) {
       return (
         <div className="flex items-center gap-2 text-muted-foreground">
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center border-2 border-transparent group-hover:border-primary/30 group-hover:bg-primary/5 transition-all duration-200 cursor-pointer">
@@ -172,12 +161,12 @@ export function AssignUserPopover({
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center border-2 border-transparent group-hover:border-primary/50 group-hover:bg-primary/20 group-hover:scale-105 transition-all duration-200 cursor-pointer">
           <span className="text-xs font-medium text-primary group-hover:text-primary/90 transition-colors duration-200">
-            {currentAssignedUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+            {assignedUser?.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
           </span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate group-hover:text-primary transition-colors duration-200">
-            {currentAssignedUser.name}
+            {assignedUser?.name}
           </div>
         </div>
       </div>
@@ -189,18 +178,18 @@ export function AssignUserPopover({
       <Tooltip>
         <TooltipTrigger asChild>
           <div>
-            <Popover open={open} onOpenChange={setOpen}>
+            <Popover open={!disabled && open} onOpenChange={disabled ? undefined : setOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
                   className="h-auto p-0 justify-start hover:bg-muted/50 w-full group transition-all duration-200 cursor-pointer"
-                  disabled={isUpdating}
+                  disabled={disabled || isUpdating}
                 >
-                  {getCurrentUserDisplay()}
+                  {getCurrentUserDisplay(localCurrentUser)}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent 
-                className="w-80 backdrop-blur-xl bg-background/60" 
+              <PopoverContent
+                className="w-80 backdrop-blur-xl bg-background/60"
                 align="start"
               >
                 <div className="space-y-2">
@@ -238,7 +227,7 @@ export function AssignUserPopover({
                             <div className="text-sm font-medium group-hover:text-primary transition-colors duration-200">Sin asignar</div>
                             <div className="text-xs text-muted-foreground">Remover asignación</div>
                           </div>
-                          {!currentAssignedUser && (
+                          {!localCurrentUser && (
                             <Check className="h-4 w-4 text-primary" />
                           )}
                         </div>
@@ -265,7 +254,7 @@ export function AssignUserPopover({
                                 <div className="text-xs text-muted-foreground truncate">
                                   {user.email}
                                 </div>
-                                <Badge 
+                                <Badge
                                   variant={user.role === 'admin' ? 'default' : 'secondary'}
                                   className="text-xs"
                                 >
@@ -273,7 +262,7 @@ export function AssignUserPopover({
                                 </Badge>
                               </div>
                             </div>
-                            {currentAssignedUser?.id === user.id && (
+                            {localCurrentUser === user.id && (
                               <Check className="h-4 w-4 text-primary" />
                             )}
                           </div>

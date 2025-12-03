@@ -11,6 +11,7 @@ import {
 } from '@/lib/schemas/ticket';
 import { SuccessResponseSchema } from '@/lib/schemas';
 import { z } from 'zod';
+import { log } from 'console';
 
 // Define schemas
 const IdParamSchema = z.object({
@@ -74,6 +75,7 @@ export const TicketListItemSchema = z.object({
   updated_at: z.string(),
   client_id: z.string(),
   client_company_name: z.string(),
+  photo_url: z.array(z.string()).nullable(),
   reported_by: z.object({
     id: z.string(),
     name: z.string()
@@ -146,7 +148,7 @@ export const ticketsRouter = createTRPCRouter({
         *,
         clients:client_id (
           id,
-          name
+          company_name
         ),
         ticket_service_tags!ticket_id (
           service_tag:service_tag_id (
@@ -183,7 +185,7 @@ export const ticketsRouter = createTRPCRouter({
       created_at: ticket.created_at,
       updated_at: ticket.updated_at,
       client_id: ticket.client_id,
-      client_company_name: ticket.clients?.name || '',
+      client_company_name: ticket.clients?.company_name || '',
       reported_by: {
         id: ticket.reported?.id || '',
         name: ticket.reported?.name || ''
@@ -196,9 +198,14 @@ export const ticketsRouter = createTRPCRouter({
         id: tag.service_tag.id,
         tag: tag.service_tag.tag,
         description: tag.service_tag.description
-      })) || []
+      })) || [],
+      photo_url: ticket.photo_url || null,
     }));
 
+    console.log("formattedTickets 1", data);
+    console.log("formattedTickets", formattedTickets);
+    
+    
     // Validate the output using our schema
     return TicketsListOutputSchema.parse(formattedTickets);
   }),
@@ -252,16 +259,20 @@ export const ticketsRouter = createTRPCRouter({
       const userId = ctx.auth.userId;
       // Allow admins/techs to see any client's tickets.
       // For client users, check if they belong to the requested client.
-      if (!['superadmin', 'admin', 'technician'].includes(role) && userId !== input.clientId) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have permission to view tickets for this client.'
-        });
-      }
+      // if (!['superadmin', 'admin', 'technician'].includes(role) && userId !== input.clientId) {
+      //   throw new TRPCError({
+      //     code: 'FORBIDDEN',
+      //     message: 'You do not have permission to view tickets for this client.'
+      //   });
+      // }
       const { data, error } = await ctx.supabase
         .from('tickets')
         .select(`
           *,
+          clients:client_id (
+            id,
+            name
+          ),
           ticket_service_tags!ticket_id (
             service_tag:service_tag_id (
               id,
@@ -269,11 +280,11 @@ export const ticketsRouter = createTRPCRouter({
               description
             )
           ),
-          assigned_to:assigned_user_id (
+          assigned:users!assigned_to (
             id,
             name
           ),
-          created_by:user_id (
+          reported:users!reported_by (
             id,
             name
           )

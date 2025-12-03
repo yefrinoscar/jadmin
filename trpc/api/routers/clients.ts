@@ -55,6 +55,19 @@ export const clientsRouter = createTRPCRouter({
     return clientsWithCounts;
   }),
 
+  getClientByUserId: protectedProcedure
+  .input(ClientIdParamSchema)
+  .query(async ({ ctx, input }) => {
+    const { data, error } = await ctx.supabase
+      .from('clients')
+      .select('*')
+      .eq('id', input.clientId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }),
+
   getById: protectedProcedure
     .input(ClientIdParamSchema)
     .query(async ({ ctx, input }) => {

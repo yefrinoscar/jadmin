@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Check, ChevronDown, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Check, ChevronDown, CurrencyIcon, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -39,8 +39,13 @@ export function InteractiveStatusSelector({
   disabled = false
 }: InteractiveStatusSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [optimisticStatus, setOptimisticStatus] = useState(currentStatus)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [status, setStatus] = useState<keyof typeof TICKET_STATUS_LABELS>(currentStatus)
+
+  // Update internal state when prop changes
+  useEffect(() => {
+    setStatus(currentStatus);
+  }, [currentStatus]);
 
   const trpc = useTRPC()
   const queryClient = useQueryClient()
@@ -50,18 +55,18 @@ export function InteractiveStatusSelector({
     onMutate: async (newData) => {
       // Optimistic update
       setIsUpdating(true)
-      setOptimisticStatus(newData.status as keyof typeof TICKET_STATUS_LABELS)
-      
+      const queryKey = [['tickets', 'getAll'], { type: 'query' }]
+
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: ["tickets", "all"],
+        queryKey: queryKey,
       })
       
       // Snapshot the previous value
-      const previousTickets = queryClient.getQueryData(["tickets", "all"])
+      const previousTickets = queryClient.getQueryData(queryKey)
       
       // Update the cache with optimistic data
-      queryClient.setQueryData(["tickets", "all"], (oldData: any) => {
+      queryClient.setQueryData(queryKey, (oldData: any) => {
         if (!oldData) return oldData
         
         // Handle both array and paginated data structures
@@ -89,37 +94,38 @@ export function InteractiveStatusSelector({
         return oldData
       })
 
-      return { previousTickets }
+      return { previousTickets, queryKey }
     },
     onError: (error, newData, context: any) => {
       // Revert optimistic update on error
-      setOptimisticStatus(currentStatus)
       setIsUpdating(false)
       
-      if (context?.previousTickets) {
-        queryClient.setQueryData(["tickets", "all"], context.previousTickets)
+      if (context?.previousTickets && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTickets)
       }
       
       toast.error(`Error al actualizar estado: ${error.message}`)
     },
     onSuccess: (data) => {
       setIsUpdating(false)
-      onStatusChange?.(data.status)
+      const newStatus = data.status as keyof typeof TICKET_STATUS_LABELS;
+      setStatus(newStatus)
+      onStatusChange?.(newStatus)
       
       toast.success("Estado actualizado exitosamente", {
-        description: `El ticket ahora está ${TICKET_STATUS_LABELS[data.status as keyof typeof TICKET_STATUS_LABELS].toLowerCase()}`,
+        description: `El ticket ahora está ${TICKET_STATUS_LABELS[newStatus].toLowerCase()}`,
       })
     },
-    onSettled: () => {
-      // Always refetch after error or success
-      void queryClient.invalidateQueries({
-        queryKey: ["tickets", "all"]
-      })
-    }
+    // onSettled: (data, context) => {
+    //   // Always refetch after error or success
+    //   void queryClient.invalidateQueries({
+    //     queryKey: context?.queryKey
+    //   })
+    // }
   }));
 
   const handleStatusChange = (newStatus: string) => {
-    if (newStatus === optimisticStatus || disabled || isUpdating) return
+    if (newStatus === status || disabled || isUpdating) return
 
     mutate({
       id: ticketId,
@@ -129,7 +135,9 @@ export function InteractiveStatusSelector({
     setIsOpen(false)
   }
 
-  const currentStatusOption = statusOptions.find(option => option.value === optimisticStatus)
+
+
+  const currentStatusOption = statusOptions.find(option => option.value === status)
 
   return (
     <div className="relative">
@@ -160,7 +168,7 @@ export function InteractiveStatusSelector({
                 )} />
               )}
               <span className="truncate font-medium">
-                {TICKET_STATUS_TABLE_LABELS[optimisticStatus]}
+                {TICKET_STATUS_TABLE_LABELS[status]}
               </span>
               <ChevronDown className={cn(
                 "h-3 w-3 transition-transform duration-300 opacity-60",
@@ -185,7 +193,7 @@ export function InteractiveStatusSelector({
               className={cn(
                 "flex items-center gap-3 px-3 py-2 cursor-pointer",
                 "transition-colors duration-100",
-                option.value === optimisticStatus && "bg-accent/10"
+                option.value === status && "bg-accent/10"
               )}
             >
               <div className="flex items-center gap-3 flex-1">
@@ -198,7 +206,7 @@ export function InteractiveStatusSelector({
                 <span className="text-sm font-medium">{option.label}</span>
               </div>
               
-              {option.value === optimisticStatus && (
+              {option.value === status && (
                 <Check className="h-4 w-4 text-muted-foreground" />
               )}
             </DropdownMenuItem>

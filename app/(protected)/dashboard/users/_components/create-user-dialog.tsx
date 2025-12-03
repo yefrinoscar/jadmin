@@ -56,7 +56,12 @@ export function CreateUserDialog({ children, onUserCreated }: CreateUserDialogPr
     email: z.string().email('Please enter a valid email address'),
     name: z.string().min(1, 'Name is required'),
     role: UserRoleSchema,
-    password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+    password: z.string()
+      .min(8, 'La contraseña debe tener al menos 8 caracteres')
+      .regex(/[A-Z]/, 'La contraseña debe contener al menos una letra mayúscula')
+      .regex(/[a-z]/, 'La contraseña debe contener al menos una letra minúscula')
+      .regex(/[0-9]/, 'La contraseña debe contener al menos un número')
+      .regex(/[!@#$%&*]/, 'La contraseña debe contener al menos un carácter especial (!@#$%&*)'),
     client_id: z.string().uuid('Please select a valid client').optional(),
   })
   .refine(data => {

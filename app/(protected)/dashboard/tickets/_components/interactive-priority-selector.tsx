@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Check, ChevronDown, Loader2, AlertTriangle, ArrowUp, Minus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -56,6 +56,12 @@ export function InteractivePrioritySelector({
   const [isOpen, setIsOpen] = useState(false)
   const [optimisticPriority, setOptimisticPriority] = useState(currentPriority)
   const [isUpdating, setIsUpdating] = useState(false)
+  
+  // Update internal state when prop changes
+  useEffect(() => {
+    setOptimisticPriority(currentPriority);
+  }, [currentPriority]);
+  
   const trpc = useTRPC()
   const queryClient = useQueryClient()
 
@@ -65,23 +71,18 @@ export function InteractivePrioritySelector({
       // Optimistic update
       setIsUpdating(true)
       setOptimisticPriority(newData.priority as keyof typeof TICKET_PRIORITY_LABELS)
-      
+      const queryKey = [['tickets', 'getAll'], { type: 'query' }]
+
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: ["tickets", "all"],
+        queryKey: queryKey,
       })
       
       // Snapshot the previous value
-      const previousTickets = queryClient.getQueryData([
-        "tickets",
-        "all",
-      ])
+      const previousTickets = queryClient.getQueryData(queryKey)
       
       // Optimistically update the cache
-      queryClient.setQueryData([
-        "tickets",
-        "all",
-      ], (old: Ticket[]) => {
+      queryClient.setQueryData(queryKey, (old: Ticket[]) => {
         if (!old) return old
         return old.map((ticket) => 
           ticket.id === ticketId 
@@ -90,18 +91,15 @@ export function InteractivePrioritySelector({
         )
       })
 
-      return { previousTickets }
+      return { previousTickets, queryKey }
     },
     onError: (err, newData, context) => {
       // Revert optimistic update on error
       setOptimisticPriority(currentPriority)
       setIsUpdating(false)
       
-      if (context?.previousTickets) {
-        queryClient.setQueryData([
-          "tickets",
-          "all",
-        ], context.previousTickets)
+      if (context?.previousTickets && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTickets)
       }
       
       toast.error("Error al actualizar la prioridad", {
@@ -110,18 +108,20 @@ export function InteractivePrioritySelector({
     },
     onSuccess: (data) => {
       setIsUpdating(false)
-      onPriorityChange?.(data.priority)
+      const newPriority = data.priority as keyof typeof TICKET_PRIORITY_LABELS;
+      // setOptimisticPriority(newPriority)
+      onPriorityChange?.(newPriority)
       
       toast.success("Prioridad actualizada", {
-        description: `La prioridad del ticket ahora es ${TICKET_PRIORITY_LABELS[data.priority as keyof typeof TICKET_PRIORITY_LABELS].toLowerCase()}`,
+        description: `La prioridad del ticket ahora es ${TICKET_PRIORITY_LABELS[newPriority].toLowerCase()}`,
         duration: 3000,
       })
     },
-    onSettled: () => {
+    onSettled: (data, context) => {
       // Always refetch after error or success
-      queryClient.invalidateQueries({
-        queryKey: ["tickets", "all"],
-      })
+      // queryClient.invalidateQueries({
+      //   queryKey: context?.queryKey,
+      // })
     }
   }));
 

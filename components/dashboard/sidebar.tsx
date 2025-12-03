@@ -29,6 +29,11 @@ const navigation = [
   { name: "Chat Soporte", href: "/dashboard/chat", icon: MessageCircle },
 ];
 
+const clientNavigation: NavigationItem[] = [
+  { name: "Panel de Control", href: "/dashboard", icon: Home },
+  { name: "Mis Tickets", href: "/clients/tickets", icon: TicketIcon },
+];
+
 const roleLabels: Record<string, string> = {
   superadmin: "Super Administrador",
   admin: "Administrador",
@@ -42,7 +47,6 @@ const roleColors: Record<string, string> = {
   technician: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
   client: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
 };
-
 
 interface User {
   id: string;
@@ -99,7 +103,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
-        {navigation.map((item) => {
+        {(userRole === 'client' ? clientNavigation : navigation).map((item) => {
           // Hide admin-only items from non-admin users
           if (item.adminOnly && !isAdmin) {
             return null;
