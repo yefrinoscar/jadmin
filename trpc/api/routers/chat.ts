@@ -80,11 +80,15 @@ export const chatRouter = createTRPCRouter({
             .limit(1)
             .single();
 
+          const assignedUser = Array.isArray(conv.assigned) && conv.assigned.length > 0 
+            ? conv.assigned[0] 
+            : null;
+
           return {
             ...conv,
-            assigned_user: conv.assigned ? {
-              id: conv.assigned.id,
-              name: conv.assigned.name,
+            assigned_user: assignedUser ? {
+              id: assignedUser.id,
+              name: assignedUser.name,
             } : null,
             last_message: lastMsg?.content?.substring(0, 100) || null,
           };
@@ -262,11 +266,15 @@ export const chatRouter = createTRPCRouter({
         });
       }
 
+      const assignedUser = Array.isArray(data.assigned) && data.assigned.length > 0 
+        ? data.assigned[0] 
+        : null;
+
       return {
         ...data,
-        assigned_user: data.assigned ? {
-          id: data.assigned.id,
-          name: data.assigned.name,
+        assigned_user: assignedUser ? {
+          id: assignedUser.id,
+          name: assignedUser.name,
         } : null,
       };
     }),
