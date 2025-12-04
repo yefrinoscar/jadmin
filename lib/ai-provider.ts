@@ -162,7 +162,7 @@ export async function generateAIResponse(
         model: mistral("mistral-small-latest"),
         system: contextPrompt,
         messages,
-        maxTokens: 300,
+        maxOutputTokens: 300,
         temperature: 0.7,
       });
 
