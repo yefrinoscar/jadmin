@@ -35,10 +35,10 @@ export default function VerifyPage() {
         // Set the user as active (logged in)
         await setActive({ session: completeSignUp.createdSessionId });
         setSuccess(true);
-        
+
         // Redirect to dashboard after successful verification
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push("/dashboard/chat");
           router.refresh();
         }, 2000);
       } else {

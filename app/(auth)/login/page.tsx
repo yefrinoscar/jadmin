@@ -20,12 +20,12 @@ export default function LoginPage() {
   const router = useRouter();
   const { isLoaded, signIn } = useSignIn();
   const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
-  
+
   // Redirigir al dashboard si el usuario ya tiene sesión iniciada
   useEffect(() => {
     if (isAuthLoaded && isSignedIn) {
       // Use hard navigation for more reliable redirection
-      window.location.href = "/dashboard";
+      window.location.href = "/dashboard/chat";
     }
   }, [isAuthLoaded, isSignedIn]);
 
@@ -45,7 +45,7 @@ export default function LoginPage() {
 
       if (result.status === "complete") {
         // Redirect to dashboard on successful sign-in using hard navigation
-        window.location.href = "/dashboard";
+        window.location.href = "/dashboard/chat";
       } else {
         // Handle other sign-in statuses if needed
         console.log("Sign-in status:", result.status);

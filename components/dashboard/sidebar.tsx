@@ -2,10 +2,10 @@
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { 
-  Home, 
-  TicketIcon, 
-  Building2, 
+import {
+  Home,
+  TicketIcon,
+  Building2,
   Users,
   LogOut,
   Loader2,
@@ -32,10 +32,10 @@ interface NavigationItem {
 }
 
 const navigation: NavigationItem[] = [
-  { name: "Panel de Control", href: "/dashboard", icon: Home, disabled: true },
-  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon, disabled: true },
-  { name: "Clientes", href: "/dashboard/clients", icon: Building2, disabled: true },
-  { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true, productionOnly: true },
+  { name: "Panel de Control", href: "/dashboard", icon: Home },
+  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon },
+  { name: "Clientes", href: "/dashboard/clients", icon: Building2 },
+  { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true },
   { name: "Chat Soporte", href: "/dashboard/chat", icon: MessageCircle },
 ];
 
@@ -78,7 +78,7 @@ export function Sidebar() {
 
   const userRole = userMetadata?.role;
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
-  
+
   // Check if we're in production
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -127,7 +127,7 @@ export function Sidebar() {
           const isActive = pathname === item.href;
           const Icon = item.icon;
           const isDisabled = item.disabled === true;
-          
+
           const buttonContent = (
             <Button
               variant={isActive ? "secondary" : "ghost"}
@@ -181,10 +181,10 @@ export function Sidebar() {
             </div>
           </div>
         </div>
-        
+
         <SignOutButton redirectUrl="/login">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50"
             disabled={isSigningOut}
           >

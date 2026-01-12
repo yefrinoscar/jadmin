@@ -2,10 +2,10 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
-  '/login(.*)', 
-  '/register(.*)', 
-  '/verify(.*)', 
-  '/api/email-access(.*)', 
+  '/login(.*)',
+  '/register(.*)',
+  '/verify(.*)',
+  '/api/email-access(.*)',
   '/api/email-smtp(.*)',
   '/api/public-tickets(.*)',
   '/api/chat/public(.*)',
@@ -31,15 +31,14 @@ export default clerkMiddleware(async (auth, request) => {
     const authObject = await auth.protect();
     const s = await authObject.sessionClaims?.metadata;
     // const user = await authObject.currentUser();
-    
+
     // Redirect client users to /clients instead of /dashboard
-    const url = new URL(request.url);    
+    const url = new URL(request.url);
     // Get the user role from session claims
     const role = sessionClaims?.role_app as string;
-    
-    // Only redirect if the user is a client and trying to access the dashboard root
-    if (role === 'client' && url.pathname === '/dashboard') {
-      
+
+    // Only redirect if the user is a client and trying to access any dashboard route
+    if (role === 'client' && url.pathname.startsWith('/dashboard')) {
       const clientsUrl = new URL('/clients', request.url);
       return NextResponse.redirect(clientsUrl);
     }
