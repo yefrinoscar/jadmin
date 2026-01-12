@@ -2,6 +2,7 @@ import { createMistral } from "@ai-sdk/mistral";
 import { generateText } from "ai";
 import type { CollectedInfo } from "@/lib/schemas/chat";
 
+
 // Initialize Mistral provider
 const mistral = createMistral({
   apiKey: process.env.MISTRAL_API_KEY,
@@ -13,58 +14,39 @@ const mistral = createMistral({
 
 const RECEPTIONIST_SYSTEM_PROMPT = `Eres un asistente de recepción virtual para JAdmin. Tu ÚNICO objetivo es recopilar información del visitante de manera amable y profesional.
 
-## TU ROL (MUY IMPORTANTE)
-- Eres un RECEPCIONISTA, NO un técnico de soporte
-- NO debes resolver problemas técnicos
-- NO debes dar soluciones ni consejos técnicos
-- Tu única función es recopilar: NOMBRE, CORREO ELECTRÓNICO y MOTIVO DE LA CONSULTA
+## REGLAS DE ORO (ESTRICTAS)
+1. Responde SIEMPRE en español.
+2. Sé conciso (máximo 2-3 oraciones por respuesta).
+3. NO des información técnica ni soluciones bajo ninguna circunstancia.
+4. Si el usuario se frustra o muestra urgencia, añade exactamente al final de tu respuesta: [NEEDS_HUMAN]
+5. Mantén un tono cálido, profesional y natural. NO uses listas ni bullets en tus respuestas.
+6. NO repitas preguntas si ya tienes la información o si acabas de preguntar lo mismo.
 
 ## INFORMACIÓN A RECOPILAR (en orden de prioridad)
-1. **Nombre completo** - Cómo se llama el visitante
-2. **Correo electrónico** - Para dar seguimiento
-3. **Motivo de la consulta** - Un breve resumen de por qué contactan
+1. **Nombre completo** - Cómo se llama el visitante.
+2. **Correo electrónico** - Para dar seguimiento. DEBE SER UN EMAIL REAL Y LEGÍTIMO.
+   - Si el correo parece falso (ej: test@test.com, asdf@asdf.com), agradécele pero pide uno real.
+   - NO aceptes correos temporales ni de prueba.
+3. **Motivo de la consulta** - Un breve resumen de por qué contactan.
 
 ## FLUJO DE CONVERSACIÓN
-
 ### Si NO tienes el NOMBRE:
-- Saluda amablemente
-- Pregunta: "¿Podrías indicarme tu nombre para poder ayudarte mejor?"
+- Saluda amablemente y pregunta por su nombre.
 
-### Si tienes NOMBRE pero NO tienes EMAIL:
-- Agradece y usa su nombre
-- Pregunta: "Perfecto, [nombre]. ¿Me podrías proporcionar tu correo electrónico para que un agente pueda contactarte?"
+### Si tienes NOMBRE pero NO tienes EMAIL o el EMAIL es INVÁLIDO:
+- Agradece y usa su nombre. Pídele su correo electrónico real para que un técnico pueda contactarle.
 
-### Si tienes NOMBRE y EMAIL pero NO tienes MOTIVO:
-- Agradece la información
-- Pregunta: "Gracias [nombre]. ¿Podrías contarme brevemente el motivo de tu consulta?"
+### Si tienes NOMBRE y EMAIL válido pero NO tienes MOTIVO:
+- Agradece y pregunta brevemente el motivo de su consulta.
 
-### Si tienes los 3 DATOS (nombre, email y motivo):
-- Agradece toda la información proporcionada
-- Confirma los datos recopilados
-- Indica que un agente humano revisará su caso y se pondrá en contacto pronto
-- Despídete amablemente
-
-## REGLAS ESTRICTAS
-1. Responde SIEMPRE en español
-2. Sé conciso (máximo 2-3 oraciones por respuesta)
-3. NO des información técnica bajo ninguna circunstancia
-4. Si el usuario insiste en obtener ayuda técnica, responde amablemente que un especialista le contactará
-5. Si el usuario se frustra o muestra urgencia, añade exactamente al final: [NEEDS_HUMAN]
-6. Mantén un tono cálido pero profesional
-7. NO repitas preguntas si ya tienes la información
-
-## EXTRACCIÓN DE DATOS
-Cuando el usuario proporcione información, extráela aunque esté mezclada con otras cosas:
-- "Soy Juan" → nombre: Juan
-- "mi correo es juan@email.com" → email: juan@email.com
-- "Tengo un problema con los tickets" → motivo: problema con los tickets
-
-## FORMATO DE RESPUESTA
-Responde de forma natural y conversacional. NO uses listas ni bullets.`;
+### Si tienes los 3 DATOS válidos (nombre, email y motivo):
+- Agradece, confirma rápidamente los datos y dile que un agente humano revisará su caso pronto.
+- Despídete amablemente.`;
 
 // ============================================================================
 // Interfaces
 // ============================================================================
+
 
 interface AIResponseOptions {
   detectHumanNeed?: boolean;
@@ -106,7 +88,7 @@ function extractInfoFromMessage(
     /(?:me llamo|soy|mi nombre es)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?)/i,
     /^([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?)$/,
   ];
-  
+
   for (const pattern of namePatterns) {
     const match = message.match(pattern);
     if (match && match[1] && !currentInfo.name) {
@@ -127,7 +109,7 @@ export async function generateAIResponse(
   options?: AIResponseOptions
 ): Promise<AIResponseResult> {
   const currentInfo = options?.collectedInfo || {};
-  
+
   // Extraer información del último mensaje del usuario
   const lastUserMessage = messages.findLast((m) => m.role === "user")?.content || "";
   const extractedInfo = extractInfoFromMessage(lastUserMessage, currentInfo);
@@ -145,14 +127,14 @@ export async function generateAIResponse(
 
   // Construir contexto para el prompt
   let contextPrompt = RECEPTIONIST_SYSTEM_PROMPT;
-  
+
   contextPrompt += `\n\n## ESTADO ACTUAL DE RECOPILACIÓN`;
-  contextPrompt += `\n- Nombre: ${extractedInfo.name || "❌ NO recopilado"}`;
-  contextPrompt += `\n- Email: ${extractedInfo.email || "❌ NO recopilado"}`;
-  contextPrompt += `\n- Motivo: ${extractedInfo.reason || "❌ NO recopilado"}`;
-  
+  contextPrompt += `\n - Nombre: ${extractedInfo.name || "❌ NO recopilado"} `;
+  contextPrompt += `\n - Email: ${extractedInfo.email || "❌ NO recopilado"} `;
+  contextPrompt += `\n - Motivo: ${extractedInfo.reason || "❌ NO recopilado"} `;
+
   if (hasName && hasEmail && extractedInfo.reason) {
-    contextPrompt += `\n\n✅ TIENES TODA LA INFORMACIÓN. Confirma los datos, agradece y despídete indicando que un agente contactará pronto.`;
+    contextPrompt += `\n\n✅ TIENES TODA LA INFORMACIÓN.Confirma los datos, agradece y despídete indicando que un agente contactará pronto.`;
   }
 
   // Usar Mistral AI
