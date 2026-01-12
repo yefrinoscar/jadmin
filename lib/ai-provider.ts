@@ -21,27 +21,27 @@ const RECEPTIONIST_SYSTEM_PROMPT = `Eres un asistente de recepción virtual para
 4. Si el usuario se frustra o muestra urgencia, añade exactamente al final de tu respuesta: [NEEDS_HUMAN]
 5. Mantén un tono cálido, profesional y natural. NO uses listas ni bullets en tus respuestas.
 6. NO repitas preguntas si ya tienes la información o si acabas de preguntar lo mismo.
+7. SE FLEXIBLE Y NO INSISTENTE: Si ya preguntaste por un dato (nombre, email o motivo) una o dos veces y el usuario no lo proporciona claramente, NO sigas insistiendo. En ese caso, agradece lo que tengas y finaliza la conversación amablemente.
+8. PROHIBIDO preguntar "¿Hay algo más?" o "¿En qué más puedo ayudarte?". Una vez que tengas el motivo (o tras un par de intentos), despídete indicando que un agente revisará el caso. NO abras la puerta a más preguntas.
 
 ## INFORMACIÓN A RECOPILAR (en orden de prioridad)
 1. **Nombre completo** - Cómo se llama el visitante.
-2. **Correo electrónico** - Para dar seguimiento. DEBE SER UN EMAIL REAL Y LEGÍTIMO.
-   - Si el correo parece falso (ej: test@test.com, asdf@asdf.com), agradécele pero pide uno real.
-   - NO aceptes correos temporales ni de prueba.
+2. **Correo electrónico** - Para dar seguimiento.
 3. **Motivo de la consulta** - Un breve resumen de por qué contactan.
 
 ## FLUJO DE CONVERSACIÓN
 ### Si NO tienes el NOMBRE:
 - Saluda amablemente y pregunta por su nombre.
 
-### Si tienes NOMBRE pero NO tienes EMAIL o el EMAIL es INVÁLIDO:
-- Agradece y usa su nombre. Pídele su correo electrónico real para que un técnico pueda contactarle.
+### Si tienes NOMBRE pero NO tienes EMAIL:
+- Agradece y usa su nombre. Pídele su correo electrónico para que un técnico pueda contactarle.
 
-### Si tienes NOMBRE y EMAIL válido pero NO tienes MOTIVO:
+### Si tienes NOMBRE y EMAIL pero NO tienes MOTIVO:
 - Agradece y pregunta brevemente el motivo de su consulta.
 
-### Si tienes los 3 DATOS válidos (nombre, email y motivo):
-- Agradece, confirma rápidamente los datos y dile que un agente humano revisará su caso pronto.
-- Despídete amablemente.`;
+### Si tienes los 3 DATOS válidos (nombre, email y motivo) O si el usuario ya explicó su problema:
+- Agradece, indica que hemos recibido la información y dile que un agente humano revisará su caso pronto.
+- Despídete. NO preguntes si necesitan algo más.`;
 
 // ============================================================================
 // Interfaces
@@ -119,22 +119,24 @@ export async function generateAIResponse(
   const hasEmail = !!(extractedInfo.email || currentInfo.email);
   const hasReason = !!(extractedInfo.reason || currentInfo.reason);
 
-  // Si el usuario parece estar dando el motivo (y ya tenemos nombre y email)
-  if (hasName && hasEmail && !hasReason && lastUserMessage.length > 10) {
-    // El mensaje probablemente es el motivo
-    extractedInfo.reason = lastUserMessage;
+  // Capturar motivo (incluso si faltan otros datos, así no lo preguntamos de nuevo si ya lo dijo)
+  if (!hasReason && lastUserMessage.length > 5 && !lastUserMessage.includes("@")) {
+    const looksLikeOnlyName = /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?$/.test(lastUserMessage.trim());
+    if (!looksLikeOnlyName) {
+      extractedInfo.reason = lastUserMessage;
+    }
   }
 
   // Construir contexto para el prompt
   let contextPrompt = RECEPTIONIST_SYSTEM_PROMPT;
 
   contextPrompt += `\n\n## ESTADO ACTUAL DE RECOPILACIÓN`;
-  contextPrompt += `\n - Nombre: ${extractedInfo.name || "❌ NO recopilado"} `;
-  contextPrompt += `\n - Email: ${extractedInfo.email || "❌ NO recopilado"} `;
-  contextPrompt += `\n - Motivo: ${extractedInfo.reason || "❌ NO recopilado"} `;
+  contextPrompt += `\n - Nombre: ${extractedInfo.name || currentInfo.name || "❌ NO recopilado"} `;
+  contextPrompt += `\n - Email: ${extractedInfo.email || currentInfo.email || "❌ NO recopilado"} `;
+  contextPrompt += `\n - Motivo: ${extractedInfo.reason || currentInfo.reason || "❌ NO recopilado"} `;
 
-  if (hasName && hasEmail && extractedInfo.reason) {
-    contextPrompt += `\n\n✅ TIENES TODA LA INFORMACIÓN.Confirma los datos, agradece y despídete indicando que un agente contactará pronto.`;
+  if (hasName && hasEmail && (extractedInfo.reason || currentInfo.reason)) {
+    contextPrompt += `\n\n✅ TIENES TODA LA INFORMACIÓN. Despídete indicando que hemos recibido la consulta y un agente contactará pronto. NO preguntes si necesitan algo más. TERMINA LA CONVERSACIÓN AQUÍ.`;
   }
 
   // Usar Mistral AI
