@@ -32,9 +32,9 @@ interface NavigationItem {
 }
 
 const navigation: NavigationItem[] = [
-  { name: "Panel de Control", href: "/dashboard", icon: Home },
-  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon },
-  { name: "Clientes", href: "/dashboard/clients", icon: Building2 },
+  { name: "Panel de Control", href: "/dashboard", icon: Home, disabled: true },
+  { name: "Tickets", href: "/dashboard/tickets", icon: TicketIcon, disabled: true },
+  { name: "Clientes", href: "/dashboard/clients", icon: Building2, disabled: true },
   { name: "Usuarios", href: "/dashboard/users", icon: Users, adminOnly: true },
   { name: "Chat Soporte", href: "/dashboard/chat", icon: MessageCircle },
 ];
