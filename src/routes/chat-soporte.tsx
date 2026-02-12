@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { MessageCircle, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { authMiddleware } from '@/lib/middleware'
+import { WebSocketDemo } from '@/components/WebSocketDemo'
 
 export const Route = createFileRoute('/chat-soporte')({
   component: ChatSoportePage,
@@ -47,7 +48,7 @@ function ChatSoportePage() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -64,6 +65,10 @@ function ChatSoportePage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-8">
+        <WebSocketDemo />
       </div>
     </div>
   )
